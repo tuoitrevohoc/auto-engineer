@@ -11,7 +11,7 @@ async function loop() {
     const runs = db.prepare("SELECT id FROM runs WHERE status = 'running' OR status = 'paused'").all() as {id: string}[];
     
     if (runs.length > 0) {
-        console.log(`Processing ${runs.length} active runs: ${runs.map(r => r.id).join(', ')}`);
+        // console.log(`Processing ${runs.length} active runs: ${runs.map(r => r.id).join(', ')}`);
     }
 
     for (const { id } of runs) {

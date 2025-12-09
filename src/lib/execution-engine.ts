@@ -111,11 +111,20 @@ async function executeStep(stepId: string, node: WorkflowNode, run: WorkflowRun,
     const actionId = node.data.actionId;
     const action = getActionInstance(actionId);
     
+    // LOGGING
+    console.log(`\n\x1b[36mRunning workflow: ${run.id}\x1b[0m`);
+    console.log(`\x1b[36mCurrent workflow: ${workflow.name}\x1b[0m`);
+    console.log(`\x1b[33mCurrent Action: ${node.data.label} (${actionId})\x1b[0m`);
+
     let result: ExecutionResult;
     
     try {
         if (!action) throw new Error(`Unknown action: ${actionId}`);
         result = await action.execute(stepInputs, context);
+
+        if (result.logs && result.logs.length > 0) {
+             console.log(`\x1b[90m${result.logs.join('\n')}\x1b[0m`);
+        }
     } catch (err) {
         result = {
             status: 'failed',

@@ -1,0 +1,28 @@
+services:
+  web:
+    build: .
+    container_name: auto-engineer-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/database.sqlite
+    volumes:
+      - ./data:/app/data
+      - ./workspaces:/tmp/auto-engineer
+    restart: always
+
+  runner:
+    build: .
+    container_name: auto-engineer-runner
+    command: npx tsx scripts/runner-worker.ts
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/database.sqlite
+    volumes:
+      - ./data:/app/data
+      - ./workspaces:/tmp/auto-engineer
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.config/gh:/root/.config/gh:ro
+    restart: always
