@@ -102,6 +102,7 @@ export const ForEachListDefinition: ActionDefinition = {
       { name: 'items', label: 'Items List', type: 'json', required: true, description: 'Array of items' },
       { name: 'workflowId', label: 'Run Workflow', type: 'workflow-id', required: true },
       { name: 'itemVariableName', label: 'Item Variable Name', type: 'string', defaultValue: 'item', description: 'Name of the input variable in child workflow' },
+      { name: 'additionalInput', label: 'Additional Input', type: 'json', description: 'JSON object to pass as inputs' },
     ],
     inputs: [],
     outputs: [

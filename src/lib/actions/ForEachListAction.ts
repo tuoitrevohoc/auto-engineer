@@ -21,6 +21,14 @@ export class ForEachListAction implements WorkflowAction {
     const workflowId = String(inputs.workflowId);
     const itemVar = String(inputs.itemVariableName || 'item');
 
+    let extraInputs = {};
+    const additionalInput = inputs.additionalInput;
+    if (typeof additionalInput === 'string') {
+            try { extraInputs = JSON.parse(additionalInput); } catch(e) { /* ignore */ }
+    } else if (typeof additionalInput === 'object' && additionalInput !== null) {
+            extraInputs = additionalInput;
+    }
+
     // Common: Fetch Child Workflow
     let childWorkflow: Workflow | undefined;
     if (context.getWorkflow) {
@@ -46,7 +54,7 @@ export class ForEachListAction implements WorkflowAction {
         
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            const childInputs = { [itemVar]: item };
+            const childInputs = { ...extraInputs, [itemVar]: item };
             const childRunId = `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
             await context.createRun({
