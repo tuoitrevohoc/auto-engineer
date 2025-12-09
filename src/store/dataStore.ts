@@ -20,6 +20,7 @@ interface DataState {
   
   createRun: (run: WorkflowRun) => void;
   updateRun: (id: string, run: Partial<WorkflowRun>) => void;
+  syncRuns: (runs: WorkflowRun[]) => void;
   deleteRun: (id: string) => void;
   cancelRun: (id: string) => void;
   
@@ -78,6 +79,14 @@ export const useDataStore = create<DataState>((set, get) => ({
     }));
     
     saveRun(updated).catch(console.error);
+  },
+
+  syncRuns: (newRuns) => {
+      set((state) => {
+          const runMap = new Map(state.runs.map(r => [r.id, r]));
+          newRuns.forEach(r => runMap.set(r.id, r));
+          return { runs: Array.from(runMap.values()) };
+      });
   },
 
   deleteRun: (id) => {

@@ -97,6 +97,28 @@ export async function getRuns(): Promise<WorkflowRun[]> {
   });
 }
 
+export async function getWorkspaceRuns(workspaceId: string): Promise<WorkflowRun[]> {
+  const st = db.prepare('SELECT * FROM runs WHERE workspaceId = ? ORDER BY startTime DESC');
+  const rows = st.all(workspaceId) as any[];
+
+  return rows.map(row => {
+    const data = JSON.parse(row.data);
+    return {
+      id: row.id,
+      workflowId: row.workflowId,
+      workspaceId: row.workspaceId,
+      status: row.status as any,
+      steps: data.steps,
+      variables: data.variables,
+      userLogs: data.userLogs,
+      inputValues: data.inputValues,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      description: row.description
+    };
+  });
+}
+
 export async function getRun(id: string): Promise<WorkflowRun | undefined> {
   const st = db.prepare('SELECT * FROM runs WHERE id = ?');
   const row = st.get(id) as any;

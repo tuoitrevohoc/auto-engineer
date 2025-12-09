@@ -169,13 +169,14 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
-                onInit={() => fitView()}
+                onInit={() => fitView({ padding: 0.2, maxZoom: 1 })}
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}
                 nodeTypes={nodeTypes}
                 fitView
+                fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             >
                 <Background />
                 <Controls />

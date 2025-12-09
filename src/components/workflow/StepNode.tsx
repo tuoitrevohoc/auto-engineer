@@ -34,9 +34,27 @@ export function StepNode({ data, selected }: NodeProps<WorkflowNode>) {
       </div>
       
       <div className="p-3">
-        <div className="font-medium text-slate-800 text-sm">
+        <div className="font-medium text-slate-800 text-sm mb-2">
           {data.label}
         </div>
+
+        {actionDef?.parameters && actionDef.parameters.length > 0 && (
+             <div className="space-y-1 pt-2 border-t border-slate-100">
+                {actionDef.parameters.map(param => {
+                    const mapping = data.inputMappings?.[param.name];
+                    if (!mapping) return null;
+                    const val = mapping.type === 'variable' ? `{{${mapping.value}}}` : String(mapping.value);
+                    if (!val) return null;
+
+                    return (
+                        <div key={param.name} className="text-[10px] text-slate-500 flex items-center justify-between gap-2">
+                             <span className="opacity-75">{param.label || param.name}</span>
+                             <span className="font-mono text-slate-700 truncate max-w-[120px]" title={val}>{val}</span>
+                        </div>
+                    );
+                })}
+             </div>
+        )}
       </div>
 
       {/* Handles */}

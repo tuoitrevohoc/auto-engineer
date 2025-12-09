@@ -7,12 +7,13 @@ import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRig
 import { WorkflowRun } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
+import { getWorkspaceRuns } from '@/app/actions';
 
 export default function WorkspaceDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
-  const { workspaces, runs, workflows, createRun } = useDataStore();
+  const { workspaces, runs, workflows, createRun, syncRuns } = useDataStore();
   
   const workspace = workspaces.find((w) => w.id === id);
 
@@ -20,7 +21,25 @@ export default function WorkspaceDetailPage() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [filterWorkflowId, setFilterWorkflowId] = useState('all');
   const [page, setPage] = useState(1);
+  const [isMounted, setIsMounted] = useState(false);
   const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+      setIsMounted(true);
+      getWorkspaceRuns(id).then(syncRuns);
+      
+      const savedShow = localStorage.getItem(`runFilter_showCompleted_${id}`);
+      if (savedShow) setShowCompleted(savedShow === 'true');
+      const savedWf = localStorage.getItem(`runFilter_workflowId_${id}`);
+      if (savedWf) setFilterWorkflowId(savedWf);
+  }, [id, syncRuns]);
+
+  useEffect(() => {
+     if (isMounted) {
+         localStorage.setItem(`runFilter_showCompleted_${id}`, String(showCompleted));
+         localStorage.setItem(`runFilter_workflowId_${id}`, filterWorkflowId);
+     }
+  }, [showCompleted, filterWorkflowId, id, isMounted]);
 
   const workspaceRuns = runs
     .filter((r) => r.workspaceId === id)
