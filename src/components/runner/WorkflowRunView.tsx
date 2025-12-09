@@ -12,9 +12,10 @@ import {
 import '@xyflow/react/dist/style.css'; 
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { StepNode } from '@/components/workflow/StepNode';
 import { Workflow, WorkflowRun, Workspace, StepExecutionState, WorkflowNode } from '@/types/workflow';
-import { executeStep, getNextSteps, resolveInputs } from '@/lib/runner';
+import { getRun } from '@/app/actions';
 import { useDataStore } from '@/store/dataStore';
 import clsx from 'clsx';
 import { Check, Loader2, Play, Notebook } from 'lucide-react';
@@ -30,8 +31,19 @@ interface RunViewContentProps {
   workspace: Workspace;
 }
 
-function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
-  const { updateRun } = useDataStore();
+function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContentProps) {
+  const { runs, updateRun, createRun, deleteRun, cancelRun } = useDataStore();
+  const router = useRouter();
+
+  // Hydrate store on mount
+  useEffect(() => {
+     const currentRuns = useDataStore.getState().runs;
+     if (!currentRuns.some(r => r.id === initialRun.id)) {
+         createRun(initialRun);
+     }
+  }, [initialRun, createRun]);
+
+  const run = runs.find(r => r.id === initialRun.id) || initialRun;
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(workflow.edges);
   const { fitView } = useReactFlow();
@@ -58,116 +70,34 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
       setTimeout(() => fitView(), 100);
   }, [fitView]);
 
-  // Execution Loop
+  // Polling Loop
   useEffect(() => {
-    if (run.status !== 'running') return;
+    if (run.status !== 'running' && run.status !== 'paused') return;
 
-    const nextStepIds = getNextSteps(run, workflow);
-    
-    // Check completion
-    const allDone = workflow.nodes.every(n => run.steps[n.id]?.status === 'success');
-    if (allDone && nextStepIds.length === 0) { // no pending and all success
-         updateRun(run.id, { status: 'completed', endTime: Date.now() });
-         return;
-    }
-
-    if (nextStepIds.length === 0) {
-        // Maybe waiting for running steps?
-        // Or failed?
-        const hasRunning = Object.values(run.steps).some(s => s.status === 'running');
-        const hasFailed = Object.values(run.steps).some(s => s.status === 'failed');
-        const hasPaused = Object.values(run.steps).some(s => s.status === 'paused'); // handled by run.status usually
-
-        if (hasFailed && !hasRunning) {
-             updateRun(run.id, { status: 'failed', endTime: Date.now() });
-        }
-        return;
-    }
-
-    // Launch steps
-    nextStepIds.forEach(stepId => {
-        const node = workflow.nodes.find(n => n.id === stepId)!;
-        
-        // Mark running synchronously
-        const timestamp = Date.now();
-        const initialInfo: StepExecutionState = {
-            stepId,
-            status: 'running',
-            startTime: timestamp,
-            inputValues: {},
-            outputs: {},
-            logs: [],
-        };
-        
-        // We need to update run steps.
-        // NOTE: This creates a race condition if multiple steps finish at once?
-        // With zustand it should be fine if we use functional updates.
-        // But here we are inside effect.
-        // We really should dispatch "START_STEP".
-        
-        const inputs = resolveInputs(node, run, workspace);
-        initialInfo.inputValues = inputs;
-
-        const updatedSteps = { ...run.steps, [stepId]: initialInfo };
-        updateRun(run.id, { steps: updatedSteps, currentStepId: stepId });
-
-        // define async runner
-        const process = async () => {
-            const actionId = node.data.actionId;
-            const result = await executeStep(actionId, inputs, { workspace, workflowId: workflow.id, runId: run.id });
-            
-            // Fetch latest run state to update? 
-            // We use functional update in store to be safe.
-            // But we can't access `run` inside async easily without ref or functional set.
-            // We will just assume we merge the result into `steps`.
-            
-            // If paused, we update step status AND run status?
-            if (result.status === 'paused') {
-                 useDataStore.setState((state) => {
-                    const currentRun = state.runs.find(r => r.id === run.id);
-                    if (!currentRun) return {};
-                    return {
-                        runs: state.runs.map(r => r.id === run.id ? {
-                            ...r,
-                            status: 'paused',
-                            steps: {
-                                ...r.steps,
-                                [stepId]: {
-                                    ...r.steps[stepId],
-                                    status: 'paused',
-                                    logs: [...(r.steps[stepId]?.logs || []), ...result.logs]
-                                }
-                            }
-                        } : r)
-                    };
+    const interval = setInterval(async () => {
+         try {
+             const fresh = await getRun(run.id);
+             if (fresh) {
+                 // Update store
+                 // We need to merge carefully? 
+                 // Or just replace properties?
+                 // The store updateRun merges.
+                 updateRun(run.id, {
+                     status: fresh.status,
+                     steps: fresh.steps,
+                     variables: fresh.variables,
+                     userLogs: fresh.userLogs,
+                     endTime: fresh.endTime,
+                     description: fresh.description
                  });
-            } else {
-                 useDataStore.setState((state) => {
-                     return {
-                         runs: state.runs.map(r => r.id === run.id ? {
-                             ...r,
-                             status: result.status === 'failed' ? 'failed' : r.status, // fail run if step fails
-                             steps: {
-                                 ...r.steps,
-                                 [stepId]: {
-                                    ...r.steps[stepId],
-                                    status: result.status,
-                                    outputs: (result.outputs || {}) as Record<string, unknown>,
-                                    logs: [...(r.steps[stepId]?.logs || []), ...result.logs],
-                                    endTime: Date.now(),
-                                    error: result.error
-                                 }
-                             }
-                         } : r)
-                     };
-                 });
-            }
-        };
+             }
+         } catch (e) {
+             console.error('Polling failed', e);
+         }
+    }, 1000);
 
-        process();
-    });
-
-  }, [run.status, run.steps /* dep on steps to retry loop */, run.id, updateRun, workflow, workspace]);
+    return () => clearInterval(interval);
+  }, [run.id, run.status, updateRun]);
 
   // Logs / Sidebar
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -175,6 +105,7 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
 
   // Handle Resume
   const [resumeVal, setResumeVal] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const pausedStepId = Object.keys(run.steps).find(k => run.steps[k].status === 'paused');
   const pausedNode = pausedStepId ? workflow.nodes.find(n => n.id === pausedStepId) : null;
   
@@ -186,47 +117,58 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
       
       const newLogs = [`User provided input: ${val}`];
 
-      useDataStore.setState((state) => ({
-          runs: state.runs.map(r => r.id === run.id ? {
-              ...r,
-              status: 'running', // Resume run
-              steps: {
-                  ...r.steps,
-                  [pausedStepId]: {
-                      ...r.steps[pausedStepId],
-                      status: 'success',
-                      outputs,
-                      logs: [...(r.steps[pausedStepId].logs || []), ...newLogs],
-                      endTime: Date.now()
-                  }
-              }
-          } : r)
-      }));
+      const updatedSteps = {
+          ...run.steps,
+          [pausedStepId]: {
+              ...run.steps[pausedStepId],
+              status: 'success' as const,
+              outputs,
+              logs: [...(run.steps[pausedStepId].logs || []), ...newLogs],
+              endTime: Date.now()
+          }
+      };
+
+      updateRun(run.id, {
+          status: 'running',
+          steps: updatedSteps
+      });
       setResumeVal('');
   };
 
-  return (
-    <div className="flex h-full">
-       <div className="flex-1 relative bg-slate-100 border-r border-slate-200">
-          <ReactFlow
-             nodes={nodes}
-             edges={edges}
-             onNodesChange={onNodesChange}
-             onEdgesChange={onEdgesChange}
-             nodeTypes={nodeTypes}
-             onNodeClick={(_, n) => setSelectedStepId(n.id)}
-             fitView
-          >
-             <Background />
-             <Controls />
-          </ReactFlow>
+  const isForEach = pausedNode && (pausedNode.data.actionId === 'foreach-list' || pausedNode.data.actionId === 'foreach-folder');
 
-          {/* Pause Overylay / Modal */}
-          {pausedNode && run.status === 'paused' && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-lg shadow-xl border-2 border-yellow-400 z-50 w-80">
-                  <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
-                      <Loader2 className="animate-spin text-yellow-500" /> Action Required
-                  </h3>
+  const pauseOverlay = pausedNode && run.status === 'paused' ? (
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-lg shadow-xl border-2 border-yellow-400 z-50 w-80">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
+              <Loader2 className="animate-spin text-yellow-500" /> 
+              {isForEach ? 'Waiting for children' : 'Action Required'}
+          </h3>
+          
+          {isForEach ? (
+               <div className="max-h-60 overflow-y-auto">
+                    <p className="text-sm text-slate-600 mb-2">Waiting for child workflows to complete...</p>
+                    <div className="space-y-1">
+                        {(() => {
+                             const outputs = run.steps[pausedNode!.id]?.outputs as { childRunIds?: string[], childStatuses?: Record<string, string> } | undefined;
+                             return outputs?.childRunIds?.map((cid: string) => {
+                                const status = outputs.childStatuses?.[cid] || 'unknown';
+                                return (
+                                    <div key={cid} className="flex items-center justify-between text-xs p-2 bg-slate-50 rounded border border-slate-100">
+                                        <span className="font-mono text-slate-500">{cid}</span>
+                                        <span className={clsx("font-medium uppercase", {
+                                            'text-blue-600': status === 'running',
+                                            'text-green-600': status === 'completed' || status === 'success',
+                                            'text-red-600': status === 'failed',
+                                            'text-slate-500': status === 'unknown'
+                                        })}>{status}</span>
+                                    </div>
+                                );
+                            });
+                        })()}
+                    </div>
+               </div>
+          ) : (
+              <>
                   <div className="text-sm text-slate-600 mb-4">
                       {pausedNode.data.label} (Step) requires input.
                   </div>
@@ -249,8 +191,28 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
                           <button onClick={() => handleResume(true)} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Submit</button>
                       </div>
                   )}
-              </div>
+              </>
           )}
+      </div>
+  ) : null;
+
+  return (
+    <div className="flex h-full">
+       <div className="flex-1 relative bg-slate-100 border-r border-slate-200">
+          <ReactFlow
+             nodes={nodes}
+             edges={edges}
+             onNodesChange={onNodesChange}
+             onEdgesChange={onEdgesChange}
+             nodeTypes={nodeTypes}
+             onNodeClick={(_, n) => setSelectedStepId(n.id)}
+             fitView
+          >
+             <Background />
+             <Controls />
+          </ReactFlow>
+
+          {pauseOverlay}
        </div>
 
         {/* Right Panel: Logs and Info */}
@@ -306,12 +268,18 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
 
                 {/* Technical Logs */}
                 <div className="space-y-2 pt-4 border-t border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
-                         <h4 className="font-medium text-sm text-slate-500 uppercase">Technical Logs</h4>
-                         {(run.status === 'completed' || run.status === 'failed') && (
-                            <button onClick={() => updateRun(run.id, { status: 'running', startTime: Date.now(), steps: {} })} className="text-xs bg-slate-100 p-1 rounded hover:bg-slate-200">Restart</button>
-                        )}
-                    </div>
+                     <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-sm text-slate-500 uppercase">Technical Logs</h4>
+                          <div className="flex gap-2">
+                              {(run.status === 'running' || run.status === 'paused') && (
+                                  <button onClick={() => cancelRun(run.id)} className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded hover:bg-red-100 border border-red-200">Cancel</button>
+                              )}
+                              {(run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') && (
+                                  <button onClick={() => updateRun(run.id, { status: 'running', startTime: Date.now(), steps: {} })} className="text-xs bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 border border-slate-200">Restart</button>
+                              )}
+                              <button onClick={() => setShowDeleteModal(true)} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200 border border-slate-200">Delete</button>
+                          </div>
+                     </div>
                     
                     {activeStep ? (
                         <div className="space-y-2">
@@ -327,6 +295,29 @@ function RunViewContent({ workflow, run, workspace }: RunViewContentProps) {
                 </div>
             </div>
         </div>
+          {/* Delete Modal */}
+          {showDeleteModal && (
+              <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
+                  <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+                      <h3 className="font-bold text-lg mb-2 text-slate-800">Delete Run?</h3>
+                      <p className="text-slate-600 mb-6">Are you sure you want to delete this run? This action cannot be undone.</p>
+                      <div className="flex justify-end gap-3">
+                          <button 
+                            onClick={() => setShowDeleteModal(false)}
+                            className="px-4 py-2 rounded text-slate-600 hover:bg-slate-100"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={() => { deleteRun(run.id); router.push(`/workspaces/${workspace.id}`); }}
+                            className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                          >
+                              Delete
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          )}
     </div>
   );
 }

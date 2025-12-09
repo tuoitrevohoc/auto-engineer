@@ -1,11 +1,18 @@
 
-import { ActionDefinition, Workspace, Workflow } from '@/types/workflow';
+import { ActionDefinition, Workspace, Workflow, WorkflowRun } from '@/types/workflow';
 
 export interface ExecutionContext {
   workspace: Workspace;
   workflowId?: string;
   runId?: string;
+  stepId?: string;
   runWorkflow?: (workflow: Workflow, inputs: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  
+  // Abstraction for data access (Server vs Client)
+  updateRun?: (runId: string, data: Partial<WorkflowRun>) => Promise<void>;
+  createRun?: (data: WorkflowRun) => Promise<void>;
+  getWorkflow?: (workflowId: string) => Promise<Workflow | undefined>;
+  getRun?: (runId: string) => Promise<WorkflowRun | undefined>;
 }
 
 export interface ExecutionResult {

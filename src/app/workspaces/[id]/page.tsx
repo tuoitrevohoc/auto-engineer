@@ -15,7 +15,24 @@ export default function WorkspaceDetailPage() {
   const { workspaces, runs, workflows, createRun } = useDataStore();
   
   const workspace = workspaces.find((w) => w.id === id);
-  const workspaceRuns = runs.filter((r) => r.workspaceId === id).sort((a,b) => b.startTime - a.startTime);
+
+  // Filtering & Pagination
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [filterWorkflowId, setFilterWorkflowId] = useState('all');
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  const workspaceRuns = runs
+    .filter((r) => r.workspaceId === id)
+    .filter((r) => showCompleted || r.status !== 'completed')
+    .filter((r) => filterWorkflowId === 'all' || r.workflowId === filterWorkflowId)
+    .sort((a,b) => b.startTime - a.startTime);
+
+  const totalPages = Math.ceil(workspaceRuns.length / ITEMS_PER_PAGE);
+  const paginatedRuns = workspaceRuns.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+  // Reset page logic
+  useEffect(() => { setPage(1); }, [showCompleted, filterWorkflowId]);
   
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -68,8 +85,33 @@ export default function WorkspaceDetailPage() {
         <div className="lg:col-span-2 space-y-4">
             <h2 className="text-lg font-semibold text-slate-700">Run History</h2>
             
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm text-sm">
+                <div className="flex-1">
+                    <select 
+                        value={filterWorkflowId} 
+                        onChange={(e) => setFilterWorkflowId(e.target.value)}
+                        className="w-full text-sm p-1.5 border border-slate-300 rounded"
+                    >
+                        <option value="all">All Workflows</option>
+                        {workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                </div>
+                <div className="flex items-center gap-2">
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={showCompleted} 
+                            onChange={e => setShowCompleted(e.target.checked)}
+                            className="rounded border-slate-300"
+                        />
+                        <span className="text-slate-600">Show Completed</span>
+                    </label>
+                </div>
+            </div>
+
             <div className="space-y-3">
-                {workspaceRuns.map(run => (
+                {paginatedRuns.map(run => (
                     <RunListItem 
                         key={run.id} 
                         run={run} 
@@ -81,6 +123,27 @@ export default function WorkspaceDetailPage() {
                     <div className="text-slate-500 italic">No runs yet.</div>
                 )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 mt-4">
+                    <button 
+                        disabled={page <= 1}
+                        onClick={() => setPage(p => p - 1)}
+                        className="px-3 py-1 bg-white border border-slate-200 rounded text-sm disabled:opacity-50 hover:bg-slate-50"
+                    >
+                        Previous
+                    </button>
+                    <span className="text-xs text-slate-500 font-medium">Page {page} of {totalPages}</span>
+                     <button 
+                        disabled={page >= totalPages}
+                        onClick={() => setPage(p => p + 1)}
+                        className="px-3 py-1 bg-white border border-slate-200 rounded text-sm disabled:opacity-50 hover:bg-slate-50"
+                    >
+                        Next
+                    </button>
+                </div>
+            )}
         </div>
 
         {/* Right: Start New Run */}

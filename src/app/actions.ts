@@ -97,6 +97,26 @@ export async function getRuns(): Promise<WorkflowRun[]> {
   });
 }
 
+export async function getRun(id: string): Promise<WorkflowRun | undefined> {
+  const st = db.prepare('SELECT * FROM runs WHERE id = ?');
+  const row = st.get(id) as any;
+  if (!row) return undefined;
+
+  const data = JSON.parse(row.data);
+  return {
+      id: row.id,
+      workflowId: row.workflowId,
+      workspaceId: row.workspaceId,
+      status: row.status as any,
+      steps: data.steps,
+      variables: data.variables,
+      userLogs: data.userLogs,
+      inputValues: data.inputValues,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      description: row.description
+  };
+}
 export async function saveRun(run: WorkflowRun): Promise<void> {
   const data = JSON.stringify({ steps: run.steps, variables: run.variables, userLogs: run.userLogs, inputValues: run.inputValues });
   const st = db.prepare(`
@@ -120,6 +140,23 @@ export async function saveRun(run: WorkflowRun): Promise<void> {
     description: run.description || null
   });
   
-  revalidatePath(`/workspaces/${run.workspaceId}`);
   revalidatePath(`/workspaces/${run.workspaceId}/runs/${run.id}`);
+}
+
+export async function deleteRun(id: string): Promise<void> {
+  const run = await getRun(id);
+  if (run) {
+      db.prepare('DELETE FROM runs WHERE id = ?').run(id);
+      revalidatePath(`/workspaces/${run.workspaceId}`);
+  }
+}
+
+export async function cancelRun(id: string): Promise<void> {
+    const now = Date.now();
+    const run = await getRun(id);
+    if(run) {
+        db.prepare("UPDATE runs SET status = 'cancelled', endTime = ? WHERE id = ?").run(now, id);
+        revalidatePath(`/workspaces/${run.workspaceId}`);
+        revalidatePath(`/workspaces/${run.workspaceId}/runs/${id}`);
+    }
 }

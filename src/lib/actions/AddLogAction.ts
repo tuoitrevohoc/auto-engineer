@@ -1,7 +1,6 @@
 
 import { ActionDefinition } from '@/types/workflow';
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
-import { useDataStore } from '@/store/dataStore';
 
 export class AddLogAction implements WorkflowAction {
   definition: ActionDefinition = {
@@ -21,9 +20,8 @@ export class AddLogAction implements WorkflowAction {
     
     logs.push(`Adding user log: ${content.substring(0, 20)}...`);
     
-    if (context.runId) {
-        const state = useDataStore.getState();
-        const existingRun = state.runs.find(r => r.id === context.runId);
+    if (context.runId && context.getRun && context.updateRun) {
+        const existingRun = await context.getRun(context.runId);
         if (existingRun) {
             const newEntry = {
                 timestamp: Date.now(),
@@ -31,9 +29,11 @@ export class AddLogAction implements WorkflowAction {
                 stepId: 'run-log'
             };
             const userLogs = [...(existingRun.userLogs || []), newEntry];
-            state.updateRun(context.runId, { userLogs });
+            await context.updateRun(context.runId, { userLogs });
             logs.push('User log added.');
         }
+    } else {
+        logs.push('Warning: context data access not available, skipping log update.');
     }
 
     return { status: 'success', logs };

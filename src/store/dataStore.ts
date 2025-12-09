@@ -3,7 +3,7 @@ import { Workflow, Workspace, WorkflowRun } from '@/types/workflow';
 import { 
   getWorkflows, saveWorkflow, deleteWorkflowAction, 
   getWorkspaces, createWorkspaceAction, 
-  getRuns, saveRun 
+  getRuns, saveRun, deleteRun, cancelRun
 } from '@/app/actions';
 
 interface DataState {
@@ -20,6 +20,8 @@ interface DataState {
   
   createRun: (run: WorkflowRun) => void;
   updateRun: (id: string, run: Partial<WorkflowRun>) => void;
+  deleteRun: (id: string) => void;
+  cancelRun: (id: string) => void;
   
   // Seed/Init
   init: () => Promise<void>;
@@ -76,6 +78,23 @@ export const useDataStore = create<DataState>((set, get) => ({
     }));
     
     saveRun(updated).catch(console.error);
+  },
+
+  deleteRun: (id) => {
+      set((state) => ({ runs: state.runs.filter((r) => r.id !== id) }));
+      deleteRun(id).catch(console.error);
+  },
+
+  cancelRun: (id) => {
+      const state = get();
+      const existing = state.runs.find(r => r.id === id);
+      if(!existing) return;
+      
+      const updated = { ...existing, status: 'cancelled' as const, endTime: Date.now() };
+       set((state) => ({
+          runs: state.runs.map((r) => (r.id === id ? updated : r))
+      }));
+      cancelRun(id).catch(console.error);
   },
 
   init: async () => {

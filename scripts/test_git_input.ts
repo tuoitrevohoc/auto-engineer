@@ -1,5 +1,6 @@
 
-import { executeStep, resolveInputs } from '../src/lib/runner';
+import { executeStep } from '../src/lib/runner';
+import { resolveInputs } from '../src/lib/workflow-utils';
 import { Workspace, WorkflowNode, WorkflowRun } from '../src/types/workflow';
 
 const mockWorkspace: Workspace = {

@@ -97,7 +97,7 @@ export interface WorkflowRun {
   id: string;
   workflowId: string;
   workspaceId: string;
-  status: 'running' | 'completed' | 'failed' | 'paused';
+  status: 'running' | 'completed' | 'failed' | 'paused' | 'cancelled';
   currentStepId?: string;
   steps: Record<string, StepExecutionState>;
   variables: Record<string, any>; // Global variables

@@ -1,7 +1,6 @@
 
 import { ActionDefinition } from '@/types/workflow';
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
-import { useDataStore } from '@/store/dataStore';
 
 export class SetDescriptionAction implements WorkflowAction {
   definition: ActionDefinition = {
@@ -21,12 +20,12 @@ export class SetDescriptionAction implements WorkflowAction {
     
     logs.push(`Setting run description to: ${desc}`);
     
-    if (context.runId) {
+    if (context.runId && context.updateRun) {
         // Side effect: Update the run
-        useDataStore.getState().updateRun(context.runId, { description: desc });
+        await context.updateRun(context.runId, { description: desc });
         logs.push('Run description updated.');
     } else {
-        logs.push('Warning: No runId in context, skipping update.');
+        logs.push('Warning: context.updateRun not available, skipping update.');
     }
 
     return {
