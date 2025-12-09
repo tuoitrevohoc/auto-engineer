@@ -3,9 +3,10 @@
 import { useDataStore } from '@/store/dataStore';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Play, Clock, CheckCircle, XCircle, PauseCircle } from 'lucide-react';
+import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { WorkflowRun } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
+import ReactMarkdown from 'react-markdown';
 
 export default function WorkspaceDetailPage() {
   const params = useParams();
@@ -17,12 +18,27 @@ export default function WorkspaceDetailPage() {
   const workspaceRuns = runs.filter((r) => r.workspaceId === id).sort((a,b) => b.startTime - a.startTime);
   
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
+  const [inputValues, setInputValues] = useState<Record<string, any>>({});
+
+  const selectedWorkflow = workflows.find(w => w.id === selectedWorkflowId);
+
+  useEffect(() => {
+      if (selectedWorkflow?.inputs) {
+          const defaults: Record<string, any> = {};
+          selectedWorkflow.inputs.forEach(inp => {
+              defaults[inp.name] = inp.defaultValue || '';
+          });
+          setInputValues(defaults);
+      } else {
+          setInputValues({});
+      }
+  }, [selectedWorkflowId, workflows]);
 
   if (!workspace) return <div className="p-8">Workspace not found</div>;
 
-  const handleStartRun = () => {
+  const executeRun = () => {
     if (!selectedWorkflowId) return;
-    
+
     const newRun: WorkflowRun = {
         id: uuidv4(),
         workflowId: selectedWorkflowId,
@@ -31,6 +47,7 @@ export default function WorkspaceDetailPage() {
         startTime: Date.now(),
         steps: {},
         variables: {},
+        inputValues: inputValues,
     };
     
     createRun(newRun);
@@ -52,27 +69,14 @@ export default function WorkspaceDetailPage() {
             <h2 className="text-lg font-semibold text-slate-700">Run History</h2>
             
             <div className="space-y-3">
-                {workspaceRuns.map(run => {
-                    const wf = workflows.find(w => w.id === run.workflowId);
-                    return (
-                        <div 
-                            key={run.id}
-                            onClick={() => router.push(`/workspaces/${id}/runs/${run.id}`)}
-                            className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:border-blue-300 cursor-pointer flex items-center justify-between"
-                        >
-                            <div className="flex items-center gap-4">
-                                <StatusBadge status={run.status} />
-                                <div>
-                                    <div className="font-medium text-slate-800">{run.description || wf?.name || 'Unknown Workflow'}</div>
-                                    <div className="text-sm text-slate-500">{new Date(run.startTime).toLocaleString()}</div>
-                                </div>
-                            </div>
-                            <div className="text-sm text-slate-400">
-                                {run.endTime ? `${((run.endTime - run.startTime)/1000).toFixed(1)}s` : 'In Progress'}
-                            </div>
-                        </div>
-                    );
-                })}
+                {workspaceRuns.map(run => (
+                    <RunListItem 
+                        key={run.id} 
+                        run={run} 
+                        workflow={workflows.find(w => w.id === run.workflowId)}
+                        onClick={() => router.push(`/workspaces/${id}/runs/${run.id}`)}
+                    />
+                ))}
                 {workspaceRuns.length === 0 && (
                     <div className="text-slate-500 italic">No runs yet.</div>
                 )}
@@ -97,22 +101,55 @@ export default function WorkspaceDetailPage() {
                         ))}
                     </select>
                     {selectedWorkflowId && (
-                        <div className="mt-2 text-sm text-slate-500 bg-slate-50 p-2 rounded border border-slate-100 italic">
-                            {workflows.find(w => w.id === selectedWorkflowId)?.description || 'No description provided.'}
+                        <div>
+                            <div className="mt-2 text-sm text-slate-500 bg-slate-50 p-2 rounded border border-slate-100 italic">
+                                {workflows.find(w => w.id === selectedWorkflowId)?.description || 'No description provided.'}
+                            </div>
+                            
+                            {/* Inline Inputs */}
+                            {selectedWorkflow?.inputs && selectedWorkflow.inputs.length > 0 && (
+                                <div className="mt-4 space-y-3 pt-3 border-t border-slate-100">
+                                    <h3 className="text-sm font-semibold text-slate-700">Inputs</h3>
+                                    {selectedWorkflow.inputs.map(input => (
+                                        <div key={input.name} className="space-y-1">
+                                           <label className="text-xs font-medium text-slate-600 uppercase">{input.label || input.name}</label>
+                                           {input.type === 'boolean' ? (
+                                                <select 
+                                                  className="w-full p-2 border border-slate-300 rounded text-sm"
+                                                  value={String(inputValues[input.name])}
+                                                  onChange={(e) => setInputValues({...inputValues, [input.name]: e.target.value === 'true'})}
+                                                >
+                                                    <option value="true">True</option>
+                                                    <option value="false">False</option>
+                                                </select>
+                                            ) : (
+                                                <input 
+                                                  type={input.type === 'number' ? 'number' : 'text'}
+                                                  className="w-full p-2 border border-slate-300 rounded text-sm"
+                                                  value={inputValues[input.name] || ''}
+                                                  placeholder={input.defaultValue ? `Default: ${input.defaultValue}` : ''}
+                                                  onChange={(e) => setInputValues({...inputValues, [input.name]: input.type === 'number' ? Number(e.target.value) : e.target.value})}
+                                                />
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
                 
                 <button
                     disabled={!selectedWorkflowId}
-                    onClick={handleStartRun}
+                    onClick={executeRun}
                     className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-2 rounded font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <Play size={18} /> Start Run
+                    <Play size={18} /> Start Run ({selectedWorkflow?.inputs?.length || 0} inputs)
                 </button>
             </div>
         </div>
       </div>
+
     </div>
   );
 }
@@ -123,4 +160,48 @@ function StatusBadge({ status }: { status: string }) {
     if (status === 'failed') return <span className="flex items-center gap-1 text-red-600 text-sm font-medium"><XCircle size={14}/> Failed</span>;
     if (status === 'paused') return <span className="flex items-center gap-1 text-yellow-600 text-sm font-medium"><PauseCircle size={14}/> Paused</span>;
     return <span className="text-slate-400 text-sm">{status}</span>;
+}
+
+function RunListItem({ run, workflow, onClick }: { run: WorkflowRun, workflow?: { name: string }, onClick: () => void }) {
+    const [expanded, setExpanded] = useState(false);
+
+    return (
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+             <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onClick={onClick}>
+                 <div className="flex items-center gap-4">
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                        className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                     >
+                         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                     </button>
+                     <StatusBadge status={run.status} />
+                     <div>
+                         <div className="font-semibold text-slate-800">{workflow?.name || 'Unknown Workflow'}</div>
+                         {run.description && <div className="text-sm text-slate-600 mt-0.5">{run.description}</div>}
+                         <div className="text-xs text-slate-400 mt-1">{new Date(run.startTime).toLocaleString()}</div>
+                     </div>
+                 </div>
+                 <div className="text-sm text-slate-400">
+                     {run.endTime ? `${((run.endTime - run.startTime)/1000).toFixed(1)}s` : 'In Progress'}
+                 </div>
+             </div>
+             {expanded && (
+                 <div className="border-t border-slate-100 p-4 bg-slate-50 rounded-b-lg space-y-3">
+                     {run.userLogs && run.userLogs.length > 0 ? (
+                         run.userLogs.map((log, idx) => (
+                             <div key={idx} className="bg-white p-3 rounded border border-slate-200 shadow-sm text-sm">
+                                 <div className="text-xs text-slate-400 mb-1">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                                 <div className="prose prose-sm max-w-none text-slate-700">
+                                     <ReactMarkdown>{log.content}</ReactMarkdown>
+                                 </div>
+                             </div>
+                         ))
+                     ) : (
+                         <div className="text-sm text-slate-400 italic pl-8">No logs available for this run.</div>
+                     )}
+                 </div>
+             )}
+        </div>
+    );
 }

@@ -18,6 +18,7 @@ export async function getWorkflows(): Promise<Workflow[]> {
       description: row.description,
       nodes: data.nodes,
       edges: data.edges,
+      inputs: data.inputs,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     };
@@ -25,7 +26,7 @@ export async function getWorkflows(): Promise<Workflow[]> {
 }
 
 export async function saveWorkflow(workflow: Workflow): Promise<void> {
-  const data = JSON.stringify({ nodes: workflow.nodes, edges: workflow.edges });
+  const data = JSON.stringify({ nodes: workflow.nodes, edges: workflow.edges, inputs: workflow.inputs });
   const st = db.prepare(`
     INSERT INTO workflows (id, name, description, data, createdAt, updatedAt)
     VALUES (@id, @name, @description, @data, @createdAt, @updatedAt)
@@ -87,6 +88,8 @@ export async function getRuns(): Promise<WorkflowRun[]> {
       status: row.status as any,
       steps: data.steps,
       variables: data.variables,
+      userLogs: data.userLogs,
+      inputValues: data.inputValues,
       startTime: row.startTime,
       endTime: row.endTime,
       description: row.description
@@ -95,7 +98,7 @@ export async function getRuns(): Promise<WorkflowRun[]> {
 }
 
 export async function saveRun(run: WorkflowRun): Promise<void> {
-  const data = JSON.stringify({ steps: run.steps, variables: run.variables });
+  const data = JSON.stringify({ steps: run.steps, variables: run.variables, userLogs: run.userLogs, inputValues: run.inputValues });
   const st = db.prepare(`
     INSERT INTO runs (id, workflowId, workspaceId, status, data, startTime, endTime, description)
     VALUES (@id, @workflowId, @workspaceId, @status, @data, @startTime, @endTime, @description)

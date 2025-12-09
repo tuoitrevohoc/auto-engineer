@@ -1,5 +1,6 @@
 import { Workflow, WorkflowRun, Workspace, WorkflowNode, WorkflowEdge } from '@/types/workflow';
 import { useDataStore } from '@/store/dataStore';
+import { getActionInstance } from './action-registry';
 
 export interface ExecutionResult {
   status: 'success' | 'failed' | 'paused';
@@ -16,102 +17,143 @@ export async function executeStep(
   // Simulate network delay
   await new Promise(r => setTimeout(r, 1000));
 
-  const logs: string[] = [`Executing action: ${actionId}`];
+  const action = getActionInstance(actionId);
+  if (!action) {
+      return { status: 'failed', error: `Unknown action: ${actionId}`, logs: [`Unknown action: ${actionId}`] };
+  }
 
-  try {
-      switch (actionId) {
-          case 'git-checkout':
-              logs.push(`Cloning ${inputs.repoUrl} to ${context.workspace.workingDirectory}...`);
-              logs.push(`Checked out branch: ${inputs.branch || 'main'}`);
-              return {
-                  status: 'success',
-                  outputs: { repoPath: `${context.workspace.workingDirectory}/repo` },
-                  logs
-              };
+  // Recursive Runner Definition
+  const runWorkflow = async (workflow: Workflow, workflowInputs: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      // Initialize simplified run state for the child
+      const childRunId = `child-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const runState: WorkflowRun = {
+          id: childRunId,
+          workflowId: workflow.id,
+          workspaceId: context.workspace.id,
+          status: 'running',
+          startTime: Date.now(),
+          steps: {},
+          variables: {},
+          inputValues: workflowInputs,
+          description: `Child run (Parent: ${context.runId?.substr(0,8) || 'Unknown'})`
+      };
+
+      // Persist the child run immediately
+      useDataStore.getState().createRun(runState);
+
+      // Execution Loop
+      while (true) {
+          const nextSteps = getNextSteps(runState, workflow);
+          // If no next steps, logic is done.
+          // Note: getNextSteps only returns steps that are ready (dependencies met) and NOT started.
           
-          case 'run-command':
-              logs.push(`Running command: ${inputs.command} ${inputs.args || ''}`);
-              logs.push(`cwd: ${inputs.workingDir || context.workspace.workingDirectory}`);
-              // Simulate checking a folder or running a build
-              return {
-                  status: 'success',
-                  outputs: { stdout: 'Command executed successfully\nDone.', stderr: '', exitCode: 0 },
-                  logs
-              };
-
-          case 'confirm':
-              logs.push('Waiting for user confirmation...');
-              return {
-                  status: 'paused', // Engine pauses here
-                  logs
-              };
-
-          case 'user-input':
-             logs.push('Waiting for user input...');
-             return {
-                 status: 'paused',
-                 logs
-             };
-          
-          case 'set-description':
-              const desc = String(inputs.description || '');
-              logs.push(`Setting run description to: ${desc}`);
-              if (context.runId) {
-                  // Side effect: Update the run
-                  useDataStore.getState().updateRun(context.runId, { description: desc });
-                  logs.push('Run description updated.');
-              } else {
-                  logs.push('Warning: No runId in context, skipping update.');
-              }
-              return {
-                  status: 'success',
-                  logs
-              };
-           
-           case 'add-log':
-              const content = String(inputs.content || '');
-              logs.push(`Adding user log: ${content.substring(0, 20)}...`);
+          if (nextSteps.length === 0) {
+              // Verify completion or failure
+              const allNodes = workflow.nodes;
+              const anyFailed = allNodes.some(n => runState.steps[n.id]?.status === 'failed');
+              const allCompleted = allNodes.every(n => runState.steps[n.id]?.status === 'success' || runState.steps[n.id]?.status === 'skipped'); // handling skipped?
               
-              if (context.runId) {
-                  const state = useDataStore.getState();
-                  const existingRun = state.runs.find(r => r.id === context.runId);
-                  if (existingRun) {
-                      const newEntry = {
-                          timestamp: Date.now(),
-                          content,
-                          stepId: 'run-log' // or we could pass stepId in context if we had it, but executeStep doesn't seem to have current stepId? 
-                          // executeStep connects node -> action. Node ID is not in context.
-                          // But we can just say "Manual Log" or leave generic.
-                          // Actually, `executeStep` context could include `stepId`.
-                          // Let's assume generic for now or ignore stepId.
-                          // Type requires stepId. I'll use 'run-log'.
-                      };
-                      const userLogs = [...(existingRun.userLogs || []), newEntry];
-                      state.updateRun(context.runId, { userLogs });
-                      logs.push('User log added.');
+              // Final update
+              const finalStatus = anyFailed ? 'failed' : 'completed';
+              runState.status = finalStatus;
+              runState.endTime = Date.now();
+              useDataStore.getState().updateRun(childRunId, { status: finalStatus, endTime: runState.endTime });
+
+              if (anyFailed) throw new Error('Child workflow step failed.');
+              break;
+          }
+
+          // Execute parallel
+          // Execute parallel
+          await Promise.all(nextSteps.map(async (stepId) => {
+              const node = workflow.nodes.find(n => n.id === stepId)!;
+              
+              // Resolve inputs
+              const stepInputs = resolveInputs(node, runState, context.workspace);
+              
+              // Mark start
+              runState.steps[stepId] = {
+                  stepId,
+                  status: 'running',
+                  inputValues: stepInputs,
+                  outputs: {},
+                  logs: [],
+                  startTime: Date.now()
+              };
+              useDataStore.getState().updateRun(childRunId, { steps: { ...runState.steps } });
+
+              // Execute Step (Recurse)
+              let res = await executeStep(node.data.actionId, stepInputs, context);
+              
+              // Handle Paused State
+              if (res.status === 'paused') {
+                  // Mark as paused in store
+                  runState.steps[stepId].status = 'paused';
+                  runState.steps[stepId].logs = [...(runState.steps[stepId].logs || []), ...res.logs];
+                  
+                  useDataStore.getState().updateRun(childRunId, { 
+                      status: 'paused',
+                      steps: { ...runState.steps } 
+                  });
+                  
+                  // Mark Parent as Paused
+                  if (context.runId) {
+                      useDataStore.getState().updateRun(context.runId, { status: 'paused' });
+                  }
+
+                  // Poll until resumed
+                  while (true) {
+                      await new Promise(r => setTimeout(r, 1000));
+                      const freshRun = useDataStore.getState().runs.find(r => r.id === childRunId);
+                      if (!freshRun) throw new Error('Run disappeard');
+                      
+                      const freshStep = freshRun.steps[stepId];
+                      if (freshStep && freshStep.status === 'success') {
+                          // Resumed by User!
+                          res = {
+                              status: 'success',
+                              outputs: freshStep.outputs,
+                              logs: freshStep.logs || []
+                          };
+                          // Resume Parent Status
+                          if (context.runId) {
+                              useDataStore.getState().updateRun(context.runId, { status: 'running' });
+                          }
+                          // Resume Child Status
+                          useDataStore.getState().updateRun(childRunId, { status: 'running' });
+                          break;
+                      }
+                      
+                      if (freshRun.status === 'failed') {
+                          throw new Error('Run failed manually.');
+                      }
                   }
               }
-              return { status: 'success', logs };
-
-          case 'foreach-folder':
-             logs.push(`Scanning folders in ${inputs.basePath} matching ${inputs.pattern}`);
-             logs.push(`Found 3 folders matching pattern.`);
-             // Note: In a real app, this would spawn child workflows.
-             // For this sim, we just Log it and verify the "Concept".
-             // Implementing real child workflows is complex. We'll simulate "Processing" them.
-             logs.push(`[SIMULATION] Spawning child workflow ${inputs.childWorkflowId} for item 1`);
-             logs.push(`[SIMULATION] Spawning child workflow ${inputs.childWorkflowId} for item 2`);
-             return {
-                 status: 'success',
-                 outputs: { totalProcessed: 3 },
-                 logs
-             };
-
-          default:
-              return { status: 'success', outputs: {}, logs: ['Unknown action, skipping'] };
+              
+              // Update state
+              runState.steps[stepId] = {
+                  ...runState.steps[stepId],
+                  status: res.status === 'success' ? 'success' : 'failed',
+                  outputs: (res.outputs as Record<string, any>) || {},
+                  logs: res.logs,
+                  endTime: Date.now(),
+                  error: res.error
+              };
+              useDataStore.getState().updateRun(childRunId, { steps: { ...runState.steps } });
+          }));
       }
+
+      return {}; // Could return aggregation of outputs if we want
+  };
+
+  try {
+      return await action.execute(inputs, { ...context, runWorkflow });
   } catch (err: unknown) {
-      return { status: 'failed', error: err instanceof Error ? err.message : String(err), logs };
+      return { 
+          status: 'failed', 
+          error: err instanceof Error ? err.message : String(err), 
+          logs: [`Error executing ${actionId}`, String(err)] 
+      };
   }
 }
 
@@ -167,6 +209,11 @@ function substituteVariables(text: string, run: WorkflowRun, workspace: Workspac
 function resolvePath(path: string, run: WorkflowRun, workspace: Workspace): unknown {
     const parts = path.split('.');
     const root = parts[0];
+
+    // Check inputs
+    if (root === 'input') {
+        return run.inputValues?.[parts[1]];
+    }
 
     // Check workspace
     if (root === 'workspace') {

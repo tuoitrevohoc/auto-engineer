@@ -1,5 +1,6 @@
-import { ActionDefinition, ActionParameter, InputMapping, WorkflowNode } from '@/types/workflow';
+import { ActionDefinition, ActionParameter, InputMapping, WorkflowNode, WorkflowInput } from '@/types/workflow';
 import { getActionDefinition } from '@/lib/action-registry';
+import { useDataStore } from '@/store/dataStore';
 import { useMemo, useState } from 'react';
 import { X, HelpCircle, Copy } from 'lucide-react';
 import Editor from 'react-simple-code-editor';
@@ -11,12 +12,14 @@ import 'prismjs/themes/prism.css';
 interface PropertyPanelProps {
   selectedNode: WorkflowNode | null;
   nodes: WorkflowNode[];
+  inputs: WorkflowInput[];
   onUpdate: (nodeId: string, data: Partial<WorkflowNode['data']>) => void;
   onClose: () => void;
 }
 
-export function PropertyPanel({ selectedNode, nodes, onUpdate, onClose }: PropertyPanelProps) {
+export function PropertyPanel({ selectedNode, nodes, inputs, onUpdate, onClose }: PropertyPanelProps) {
   const [showHelper, setShowHelper] = useState(false);
+  const { workflows } = useDataStore();
 
   const actionDef = useMemo(() => 
     selectedNode ? getActionDefinition(selectedNode.data.actionId) : null,
@@ -47,12 +50,27 @@ export function PropertyPanel({ selectedNode, nodes, onUpdate, onClose }: Proper
   };
 
   return (
-    <div className="w-80 bg-white border-l border-slate-200 flex flex-col h-full shadow-xl z-20 absolute right-0 top-0 bottom-0">
+    <div className="w-[640px] bg-white border-l border-slate-200 flex flex-col h-full shadow-xl z-20 absolute right-0 top-0 bottom-0">
       {showHelper && (
           <div className="absolute right-full top-0 w-72 bg-white border border-slate-200 shadow-xl rounded-l-lg mr-1 h-full overflow-y-auto p-4 flex flex-col gap-4 z-50">
               <div className="flex justify-between items-center border-b pb-2">
                   <h4 className="font-semibold text-slate-800">Available Variables</h4>
                   <button onClick={() => setShowHelper(false)}><X size={16} /></button>
+              </div>
+              
+              <div>
+                  <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Inputs</h5>
+                  <div className="space-y-1">
+                      {inputs.map(inp => (
+                          <VariableItem 
+                              key={inp.name} 
+                              label={inp.label || inp.name} 
+                              value={`{{ input.${inp.name} }}`} 
+                              onCopy={copyToClipboard} 
+                          />
+                      ))}
+                      {inputs.length === 0 && <div className="text-xs text-slate-400 italic">No inputs defined.</div>}
+                  </div>
               </div>
               
               <div>
@@ -143,7 +161,18 @@ export function PropertyPanel({ selectedNode, nodes, onUpdate, onClose }: Proper
 
                         {/* Value Input */}
                         {mapping.type === 'constant' && (
-                             param.type === 'boolean' ? (
+                             param.type === 'workflow-id' ? (
+                                <select 
+                                    value={String(mapping.value)}
+                                    onChange={(e) => updateMapping(param.name, 'constant', e.target.value)}
+                                    className="w-full p-2 border border-slate-300 rounded text-sm"
+                                >
+                                    <option value="">-- Select Workflow --</option>
+                                    {workflows.map(wf => (
+                                        <option key={wf.id} value={wf.id}>{wf.name}</option>
+                                    ))}
+                                </select>
+                             ) : param.type === 'boolean' ? (
                                 <select 
                                     value={String(mapping.value)}
                                     onChange={(e) => updateMapping(param.name, 'constant', e.target.value === 'true')}

@@ -21,10 +21,10 @@ import { ActionSidebar } from './ActionSidebar';
 import { PropertyPanel } from './PropertyPanel';
 import { toast } from 'sonner';
 import { StepNode } from './StepNode';
-import { Workflow, WorkflowNode } from '@/types/workflow';
+import { Workflow, WorkflowNode, WorkflowInput } from '@/types/workflow';
 import { getActionDefinition } from '@/lib/action-registry';
 import { useDataStore } from '@/store/dataStore';
-import { Save } from 'lucide-react';
+import { Save, Settings, Trash, Plus, X } from 'lucide-react';
 
 const nodeTypes = {
   stepNode: StepNode,
@@ -42,6 +42,8 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [name, setName] = useState(initialWorkflow.name);
   const [description, setDescription] = useState(initialWorkflow.description || '');
+  const [inputs, setInputs] = useState<WorkflowInput[]>(initialWorkflow.inputs || []);
+  const [showInputsModal, setShowInputsModal] = useState(false);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
   const onConnect = useCallback((params: Connection) => {
@@ -110,6 +112,7 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
         description,
         nodes,
         edges,
+        inputs,
         updatedAt: new Date().toISOString()
     };
     try {
@@ -120,7 +123,7 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
       console.error('Failed to save workflow:', error);
       toast.error('Failed to save workflow');
     }
-  }, [nodes, edges, initialWorkflow, name, description, onSave]);
+  }, [nodes, edges, inputs, initialWorkflow, name, description, onSave]);
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) as WorkflowNode || null;
 
@@ -146,7 +149,13 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
              onClick={handleSave}
              className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 transition-colors"
           >
-            <Save size={16} /> Save
+             <Save size={16} /> Save
+          </button>
+          <button 
+             onClick={() => setShowInputsModal(true)}
+             className="flex items-center gap-2 bg-white text-slate-600 border border-slate-300 px-3 py-1.5 rounded text-sm hover:bg-slate-50 transition-colors"
+          >
+             <Settings size={16} /> Inputs ({inputs.length})
           </button>
        </div>
 
@@ -176,14 +185,122 @@ function BuilderContent({ initialWorkflow, onSave }: WorkflowBuilderProps) {
                 <PropertyPanel 
                     selectedNode={selectedNode} 
                     nodes={nodes}
+                    inputs={inputs}
                     onUpdate={handleUpdateNode}
                     onClose={() => setSelectedNodeId(null)}
                 />
             )}
-          </div>
        </div>
+       </div>
+
+       {showInputsModal && (
+           <InputsModal 
+                inputs={inputs} 
+                onChange={setInputs} 
+                onClose={() => setShowInputsModal(false)} 
+           />
+       )}
     </div>
   );
+}
+
+function InputsModal({ inputs, onChange, onClose }: { inputs: WorkflowInput[], onChange: (i: WorkflowInput[]) => void, onClose: () => void }) {
+    const addInput = () => {
+        onChange([...inputs, { name: '', type: 'text', label: '', defaultValue: '' }]);
+    };
+
+    const updateInput = (index: number, field: keyof WorkflowInput, value: any) => {
+        const newInputs = [...inputs];
+        newInputs[index] = { ...newInputs[index], [field]: value };
+        onChange(newInputs);
+    };
+
+    const removeInput = (index: number) => {
+        onChange(inputs.filter((_, i) => i !== index));
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-lg">
+                    <h3 className="font-semibold text-lg text-slate-800">Workflow Inputs</h3>
+                    <button onClick={onClose}><X size={20} className="text-slate-500 hover:text-slate-800" /></button>
+                </div>
+                
+                <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                    <p className="text-sm text-slate-600">Define global variables that can be used in your workflow steps using <code>{`{{ input.name }}`}</code>.</p>
+                    
+                    {inputs.length === 0 && (
+                        <div className="text-center py-8 text-slate-400 italic border-2 border-dashed border-slate-200 rounded">
+                            No inputs defined.
+                        </div>
+                    )}
+
+                    {inputs.map((input, idx) => (
+                        <div key={idx} className="bg-slate-50 p-3 rounded border border-slate-200 flex gap-3 items-start relative group">
+                            <div className="flex-1 space-y-2">
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Variable Name</label>
+                                        <input 
+                                            value={input.name} 
+                                            onChange={(e) => updateInput(idx, 'name', e.target.value)}
+                                            placeholder="e.g. environment"
+                                            className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                        />
+                                    </div>
+                                    <div className="w-1/3">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Type</label>
+                                        <select 
+                                            value={input.type}
+                                            onChange={(e) => updateInput(idx, 'type', e.target.value)}
+                                            className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                        >
+                                            <option value="text">Text</option>
+                                            <option value="number">Number</option>
+                                            <option value="boolean">Boolean</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                     <div className="flex-1">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Label (Optional)</label>
+                                        <input 
+                                            value={input.label || ''} 
+                                            onChange={(e) => updateInput(idx, 'label', e.target.value)}
+                                            placeholder="User-friendly label"
+                                            className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Default Value</label>
+                                        <input 
+                                            value={String(input.defaultValue || '')} 
+                                            onChange={(e) => updateInput(idx, 'defaultValue', e.target.value)}
+                                            placeholder="Default..."
+                                            className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => removeInput(idx)} className="text-slate-400 hover:text-red-500 mt-6">
+                                <Trash size={18} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-4 border-t bg-slate-50 rounded-b-lg flex justify-between">
+                     <button onClick={addInput} className="text-blue-600 hover:text-blue-800 font-medium text-sm flex items-center gap-1">
+                         <Plus size={16} /> Add Input
+                     </button>
+                     <button onClick={onClose} className="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-900">
+                         Done
+                     </button>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export function WorkflowBuilder(props: WorkflowBuilderProps) {

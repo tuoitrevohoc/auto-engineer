@@ -1,6 +1,6 @@
 import { Edge, Node } from '@xyflow/react';
 
-export type ActionParamType = 'string' | 'number' | 'boolean' | 'text' | 'json';
+export type ActionParamType = 'string' | 'number' | 'boolean' | 'text' | 'json' | 'workflow-id';
 
 export interface ActionParameter {
   name: string;
@@ -55,12 +55,20 @@ export interface WorkflowStepData {
 export type WorkflowNode = Node<WorkflowStepData>;
 export type WorkflowEdge = Edge;
 
+export interface WorkflowInput {
+  name: string;
+  label?: string;
+  type: 'text' | 'number' | 'boolean';
+  defaultValue?: string | number | boolean;
+}
+
 export interface Workflow {
   id: string;
   name: string;
   description?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  inputs?: WorkflowInput[];
   createdAt: string;
   updatedAt: string;
 }
@@ -90,9 +98,10 @@ export interface WorkflowRun {
   workflowId: string;
   workspaceId: string;
   status: 'running' | 'completed' | 'failed' | 'paused';
-  steps: Record<string, StepExecutionState>; // keyed by node id
   currentStepId?: string;
-  variables: Record<string, unknown>; // Global run variables/context
+  steps: Record<string, StepExecutionState>;
+  variables: Record<string, any>; // Global variables
+  inputValues?: Record<string, any>; // Inputs for this run
   startTime: number;
   endTime?: number;
   description?: string; // Dynamic description set during run
