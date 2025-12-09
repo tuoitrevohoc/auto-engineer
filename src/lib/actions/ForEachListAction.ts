@@ -83,7 +83,7 @@ export class ForEachListAction implements WorkflowAction {
 
             // Check statuses
             if (cRun.status === 'failed') failedCount++;
-            else if (cRun.status === 'completed') completedCount++;
+            else if (cRun.status === 'completed' || cRun.status === 'cancelled') completedCount++;
             else runningCount++;
         }
 

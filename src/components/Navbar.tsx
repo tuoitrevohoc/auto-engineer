@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Home, Workflow, FolderGit2 } from 'lucide-react';
+import { Home, Workflow, FolderGit2, Settings } from 'lucide-react';
 
 export function Navbar() {
   return (
@@ -18,6 +18,10 @@ export function Navbar() {
         <Link href="/workspaces" className="flex items-center gap-3 p-3 hover:bg-slate-800 rounded-md transition-colors">
           <FolderGit2 size={20} />
           <span>Workspaces</span>
+        </Link>
+        <Link href="/settings" className="flex items-center gap-3 p-3 hover:bg-slate-800 rounded-md transition-colors">
+          <Settings size={20} />
+          <span>Settings</span>
         </Link>
       </div>
       

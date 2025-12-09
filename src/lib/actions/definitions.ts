@@ -19,7 +19,7 @@ export const RunCommandDefinition: ActionDefinition = {
     name: 'Run Command',
     description: 'Execute a shell command',
     parameters: [
-      { name: 'command', label: 'Command', type: 'string', required: true },
+      { name: 'command', label: 'Command', type: 'string', required: true, language: 'bash' },
       { name: 'args', label: 'Arguments', type: 'string' },
     ],
     inputs: [
@@ -83,20 +83,15 @@ export const AddLogDefinition: ActionDefinition = {
     outputs: [],
 };
 
-export const ForEachFolderDefinition: ActionDefinition = {
-    id: 'foreach-folder',
-    name: 'For Each Folder',
-    description: 'Iterate over folders matching a pattern and run a sub-workflow',
-    parameters: [
-      { name: 'pattern', label: 'Glob Pattern', type: 'string', required: true, defaultValue: '*' },
-      { name: 'childWorkflowId', label: 'Child Workflow ID', type: 'string', required: true },
-    ],
-    inputs: [
-      { name: 'basePath', type: 'string', required: true },
-    ],
+export const NewTempFolderDefinition: ActionDefinition = {
+    id: 'new-temp-folder',
+    name: 'New Temp Folder',
+    description: 'Create a new temporary folder',
+    parameters: [],
+    inputs: [],
     outputs: [
-      { name: 'totalProcessed', type: 'number' },
-    ],
+      { name: 'path', type: 'string', description: 'Absolute path to the new temp folder' }
+    ]
 };
 
 export const ForEachListDefinition: ActionDefinition = {
@@ -112,5 +107,34 @@ export const ForEachListDefinition: ActionDefinition = {
     outputs: [
       { name: 'totalProcessed', type: 'number' },
       { name: 'results', type: 'json' }
+    ],
+};
+
+export const AskChatGPTDefinition: ActionDefinition = {
+    id: 'ask-chatgpt',
+    name: 'Ask ChatGPT',
+    description: 'Send a prompt to OpenAI ChatGPT and get a response',
+    parameters: [
+      { name: 'prompt', label: 'Prompt', type: 'text', required: true, description: 'The prompt to send' },
+      { name: 'model', label: 'Model', type: 'string', defaultValue: 'gpt-4o' },
+    ],
+    inputs: [],
+    outputs: [
+      { name: 'response', type: 'string' },
+    ],
+};
+
+export const SplitStringDefinition: ActionDefinition = {
+    id: 'split-string',
+    name: 'Split String',
+    description: 'Split a string by a delimiter into a list of strings',
+    parameters: [
+      { name: 'delimiter', label: 'Delimiter', type: 'string', required: true, defaultValue: ',' },
+    ],
+    inputs: [
+        { name: 'inputString', type: 'string', required: true }
+    ],
+    outputs: [
+      { name: 'strings', type: 'json' },
     ],
 };

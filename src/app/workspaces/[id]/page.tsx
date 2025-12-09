@@ -3,17 +3,18 @@
 import { useDataStore } from '@/store/dataStore';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRight, Save, Trash } from 'lucide-react';
-import { WorkflowRun } from '@/types/workflow';
+import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRight, Save, Trash, Loader2 } from 'lucide-react';
+import { WorkflowRun, Workflow } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
 import { getWorkspaceRuns } from '@/app/actions';
+import { RunInputControls } from '@/components/runner/RunInputControls';
 
 export default function WorkspaceDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
-  const { workspaces, runs, workflows, createRun, syncRuns, updateWorkspace, deleteWorkspace } = useDataStore();
+  const { workspaces, runs, workflows, createRun, syncRuns, updateWorkspace, deleteWorkspace, deleteRun, updateRun, cancelRun } = useDataStore();
   
   const workspace = workspaces.find((w) => w.id === id);
 
@@ -44,17 +45,24 @@ export default function WorkspaceDetailPage() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [filterWorkflowId, setFilterWorkflowId] = useState('all');
   const [page, setPage] = useState(1);
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
   const [isMounted, setIsMounted] = useState(false);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
       setIsMounted(true);
       getWorkspaceRuns(id).then(syncRuns);
+
+      const interval = setInterval(() => {
+          getWorkspaceRuns(id).then(syncRuns);
+      }, 15000);
       
       const savedShow = localStorage.getItem(`runFilter_showCompleted_${id}`);
       if (savedShow) setShowCompleted(savedShow === 'true');
       const savedWf = localStorage.getItem(`runFilter_workflowId_${id}`);
       if (savedWf) setFilterWorkflowId(savedWf);
+
+      return () => clearInterval(interval);
   }, [id, syncRuns]);
 
   useEffect(() => {
@@ -74,7 +82,79 @@ export default function WorkspaceDetailPage() {
   const paginatedRuns = workspaceRuns.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   // Reset page logic
-  useEffect(() => { setPage(1); }, [showCompleted, filterWorkflowId]);
+  useEffect(() => { 
+      setPage(1); 
+      setSelectedRunIds(new Set());
+  }, [showCompleted, filterWorkflowId]);
+
+  const toggleSelectRun = (runId: string) => {
+      setSelectedRunIds(prev => {
+          const next = new Set(prev);
+          if (next.has(runId)) next.delete(runId);
+          else next.add(runId);
+          return next;
+      });
+  };
+
+  const currentIds = paginatedRuns.map(r => r.id);
+  const allSelected = currentIds.length > 0 && currentIds.every(id => selectedRunIds.has(id));
+
+  const toggleSelectAll = () => {
+      setSelectedRunIds(prev => {
+         const next = new Set(prev);
+         if (allSelected) {
+             currentIds.forEach(id => next.delete(id));
+         } else {
+             currentIds.forEach(id => next.add(id));
+         }
+         return next;
+      });
+  };
+  
+  const deleteSelectedRuns = async () => {
+      if (!confirm(`Delete ${selectedRunIds.size} runs?`)) return;
+      const ids = Array.from(selectedRunIds);
+      setSelectedRunIds(new Set()); 
+      await Promise.all(ids.map(id => deleteRun(id)));
+  };
+
+  const handleResumeRun = (runId: string, value: any) => {
+      const run = runs.find(r => r.id === runId);
+      if (!run) return;
+      
+      const stepId = Object.keys(run.steps).find(k => run.steps[k].status === 'paused');
+      if (!stepId) return;
+
+      const step = run.steps[stepId];
+
+      const runWorkflow = workflows.find(w => w.id === run.workflowId);
+      const stepNode = runWorkflow?.nodes.find(n => n.id === stepId);
+
+      if (stepNode?.data.actionId === 'confirm' && value === false) {
+           cancelRun(runId);
+           return;
+      }
+
+      const outputs = { value: value, confirmed: value }; 
+      
+      const newLogs = [`User provided input: ${value}`];
+
+      const updatedSteps = {
+           ...run.steps,
+           [stepId]: {
+               ...step,
+               status: 'success' as const,
+               outputs,
+               logs: [...(step.logs || []), ...newLogs],
+               endTime: Date.now()
+           }
+      };
+
+      updateRun(runId, {
+           status: 'running',
+           steps: updatedSteps
+      });
+  };
   
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -152,28 +232,54 @@ export default function WorkspaceDetailPage() {
             <h2 className="text-lg font-semibold text-slate-700">Run History</h2>
             
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm text-sm">
-                <div className="flex-1">
-                    <select 
-                        value={filterWorkflowId} 
-                        onChange={(e) => setFilterWorkflowId(e.target.value)}
-                        className="w-full text-sm p-1.5 border border-slate-300 rounded"
-                    >
-                        <option value="all">All Workflows</option>
-                        {workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                    </select>
+            {/* Filters */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm text-sm space-y-3">
+                <div className="flex flex-col sm:flex-row gap-4 items-center">
+                    <div className="flex-1 w-full">
+                        <select 
+                            value={filterWorkflowId} 
+                            onChange={(e) => setFilterWorkflowId(e.target.value)}
+                            className="w-full text-sm p-1.5 border border-slate-300 rounded"
+                        >
+                            <option value="all">All Workflows</option>
+                            {workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                         <label className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={showCompleted} 
+                                onChange={e => setShowCompleted(e.target.checked)}
+                                className="rounded border-slate-300"
+                            />
+                            <span className="text-slate-600">Show Completed</span>
+                        </label>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                     <label className="flex items-center gap-2 cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            checked={showCompleted} 
-                            onChange={e => setShowCompleted(e.target.checked)}
-                            className="rounded border-slate-300"
-                        />
-                        <span className="text-slate-600">Show Completed</span>
-                    </label>
-                </div>
+
+                {workspaceRuns.length > 0 && (
+                    <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+                         <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700 select-none">
+                            <input 
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={toggleSelectAll}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Select Page
+                         </label>
+                         
+                         {selectedRunIds.size > 0 && (
+                             <button 
+                                onClick={deleteSelectedRuns} 
+                                className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors"
+                             >
+                                 <Trash size={14} /> Delete Selected ({selectedRunIds.size})
+                             </button>
+                         )}
+                    </div>
+                )}
             </div>
 
             <div className="space-y-3">
@@ -183,6 +289,9 @@ export default function WorkspaceDetailPage() {
                         run={run} 
                         workflow={workflows.find(w => w.id === run.workflowId)}
                         onClick={() => router.push(`/workspaces/${id}/runs/${run.id}`)}
+                        selected={selectedRunIds.has(run.id)}
+                        onToggleSelect={() => toggleSelectRun(run.id)}
+                        onResume={(val) => handleResumeRun(run.id, val)}
                     />
                 ))}
                 {workspaceRuns.length === 0 && (
@@ -291,13 +400,33 @@ function StatusBadge({ status }: { status: string }) {
     return <span className="text-slate-400 text-sm">{status}</span>;
 }
 
-function RunListItem({ run, workflow, onClick }: { run: WorkflowRun, workflow?: { name: string }, onClick: () => void }) {
+function RunListItem({ run, workflow, onClick, selected, onToggleSelect, onResume }: { 
+    run: WorkflowRun, 
+    workflow?: Workflow, 
+    onClick: () => void,
+    selected: boolean,
+    onToggleSelect: () => void,
+    onResume: (val: any) => void
+}) {
     const [expanded, setExpanded] = useState(false);
+    
+    // Check pause state
+    const pausedStepId = Object.keys(run.steps).find(k => run.steps[k].status === 'paused');
+    const pausedNode = pausedStepId && workflow ? workflow.nodes.find(n => n.id === pausedStepId) : null;
+    const isPaused = !!pausedNode && run.status === 'paused';
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+        <div className={`bg-white rounded-lg shadow-sm border ${selected ? 'border-blue-400 ring-1 ring-blue-400' : 'border-slate-200'}`}>
              <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onClick={onClick}>
                  <div className="flex items-center gap-4">
+                     <div onClick={e => e.stopPropagation()} className="flex items-center">
+                        <input 
+                            type="checkbox" 
+                            checked={selected}
+                            onChange={onToggleSelect}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-gray-100"
+                        />
+                     </div>
                      <button 
                         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
                         className="p-1 hover:bg-slate-200 rounded text-slate-500"
@@ -315,21 +444,56 @@ function RunListItem({ run, workflow, onClick }: { run: WorkflowRun, workflow?: 
                      {run.endTime ? `${((run.endTime - run.startTime)/1000).toFixed(1)}s` : 'In Progress'}
                  </div>
              </div>
-             {expanded && (
-                 <div className="border-t border-slate-100 p-4 bg-slate-50 rounded-b-lg space-y-3">
-                     {run.userLogs && run.userLogs.length > 0 ? (
-                         run.userLogs.map((log, idx) => (
-                             <div key={idx} className="bg-white p-3 rounded border border-slate-200 shadow-sm text-sm">
-                                 <div className="text-xs text-slate-400 mb-1">{new Date(log.timestamp).toLocaleTimeString()}</div>
-                                 <div className="prose prose-sm max-w-none text-slate-700">
-                                     <ReactMarkdown>{log.content}</ReactMarkdown>
-                                 </div>
+             
+             {isPaused && pausedNode && (
+                 <div onClick={e => e.stopPropagation()}>
+                    {pausedNode.data.actionId === 'confirm' ? (
+                        <div className="mx-4 mb-4 px-1 flex items-center justify-between">
+                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                 <Loader2 className="animate-spin text-blue-500" size={14} />
+                                 {String(pausedNode.data.inputMappings?.message?.value || pausedNode.data.label)}
                              </div>
-                         ))
-                     ) : (
-                         <div className="text-sm text-slate-400 italic pl-8">No logs available for this run.</div>
-                     )}
+                             <RunInputControls node={pausedNode} onSubmit={onResume} className="mt-0" />
+                        </div>
+                    ) : pausedNode.data.actionId === 'user-input' ? (
+                        <div className="mx-4 mb-4 px-1">
+                              <RunInputControls node={pausedNode} onSubmit={onResume} className="mt-0" />
+                        </div>
+                    ) : ( 
+                        <div className="mx-4 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md shadow-sm">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-yellow-800 mb-2">
+                                <Loader2 className="animate-spin text-yellow-600" size={14} />
+                                Waiting for Input: {pausedNode.data.label}
+                            </div>
+                            {pausedNode.data.actionId === 'foreach-list' || pausedNode.data.actionId === 'foreach-folder' ? (
+                                <div className="text-xs text-yellow-700 italic ml-6">
+                                    Waiting for child workflows to complete...
+                                </div>
+                            ) : (
+                                <div className="ml-6">
+                                     <RunInputControls node={pausedNode} onSubmit={onResume} />
+                                </div>
+                            )}
+                        </div>
+                    )}
                  </div>
+             )}
+
+             {expanded && (
+                  <div className="border-t border-slate-100 p-4 bg-slate-50 rounded-b-lg space-y-3">
+                      {run.userLogs && run.userLogs.length > 0 ? (
+                          run.userLogs.map((log, idx) => (
+                              <div key={idx} className="bg-white p-3 rounded border border-slate-200 shadow-sm text-sm">
+                                  <div className="text-xs text-slate-400 mb-1">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                                  <div className="prose prose-sm max-w-none text-slate-700">
+                                      <ReactMarkdown>{log.content}</ReactMarkdown>
+                                  </div>
+                              </div>
+                          ))
+                      ) : (
+                          <div className="text-sm text-slate-400 italic pl-8">No logs available for this run.</div>
+                      )}
+                  </div>
              )}
         </div>
     );

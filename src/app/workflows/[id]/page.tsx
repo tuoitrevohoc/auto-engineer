@@ -16,8 +16,6 @@ export default function WorkflowEditorPage() {
 
   const handleSave = (updated: Workflow) => {
     updateWorkflow(id, updated);
-    // Optionally show a toast or feedback
-    alert('Saved!');
   };
 
   return (

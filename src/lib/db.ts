@@ -35,6 +35,11 @@ db.exec(`
     FOREIGN KEY(workflowId) REFERENCES workflows(id),
     FOREIGN KEY(workspaceId) REFERENCES workspaces(id)
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
 
 export default db;

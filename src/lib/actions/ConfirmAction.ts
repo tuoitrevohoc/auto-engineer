@@ -7,7 +7,7 @@ export class ConfirmAction implements WorkflowAction {
   definition = ConfirmDefinition;
 
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
-    const logs: string[] = [`Executing action: ${this.definition.id}`, 'Waiting for user confirmation...'];
+    const logs: string[] = [];
     return {
       status: 'paused',
       logs

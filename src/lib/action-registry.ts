@@ -6,8 +6,10 @@ import {
     UserInputDefinition, 
     SetDescriptionDefinition, 
     AddLogDefinition, 
-    ForEachFolderDefinition, 
-    ForEachListDefinition 
+    NewTempFolderDefinition, 
+    ForEachListDefinition,
+    AskChatGPTDefinition,
+    SplitStringDefinition
 } from './actions/definitions';
 
 export const ACTION_REGISTRY: ActionDefinition[] = [
@@ -17,8 +19,10 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
     UserInputDefinition,
     SetDescriptionDefinition,
     AddLogDefinition,
-    ForEachFolderDefinition,
-    ForEachListDefinition
+    NewTempFolderDefinition,
+    ForEachListDefinition,
+    AskChatGPTDefinition,
+    SplitStringDefinition
 ];
 
 export const getActionDefinition = (id: string): ActionDefinition | undefined => {

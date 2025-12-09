@@ -187,12 +187,12 @@ export const useDataStore = create<DataState>((set, get) => ({
                        type: 'stepNode',
                        position: { x: 100, y: 500 },
                        data: {
-                           label: 'Scan Packages',
-                           actionId: 'foreach-folder',
+                           label: 'List Files',
+                           actionId: 'run-command',
                            inputMappings: {
-                               basePath: { type: 'variable', value: 'node-2.repoPath' },
-                               pattern: { type: 'constant', value: 'packages/*' },
-                               childWorkflowId: { type: 'constant', value: 'child-wf-1' }
+                               command: { type: 'constant', value: 'ls' },
+                               args: { type: 'constant', value: '-la' },
+                               workingDir: { type: 'variable', value: 'node-2.repoPath' }
                            },
                            executionStatus: 'idle'
                        },

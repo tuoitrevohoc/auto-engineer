@@ -9,6 +9,7 @@ export interface ActionParameter {
   required?: boolean;
   defaultValue?: unknown;
   description?: string;
+  language?: string;
 }
 
 export interface ActionInputRequest {

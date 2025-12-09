@@ -1,12 +1,14 @@
 import { ActionDefinition, ActionParameter, InputMapping, WorkflowNode, WorkflowInput } from '@/types/workflow';
 import { getActionDefinition } from '@/lib/action-registry';
 import { useDataStore } from '@/store/dataStore';
+import { generateCode } from '@/app/actions';
 import { useMemo, useState } from 'react';
-import { X, HelpCircle, Copy } from 'lucide-react';
+import { X, HelpCircle, Copy, Wand2, Loader2 } from 'lucide-react';
 import Editor from 'react-simple-code-editor';
 import { highlight, languages } from 'prismjs';
 import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-markdown';
+import 'prismjs/components/prism-bash';
 import 'prismjs/themes/prism.css';
 
 interface PropertyPanelProps {
@@ -19,6 +21,13 @@ interface PropertyPanelProps {
 
 export function PropertyPanel({ selectedNode, nodes, inputs, onUpdate, onClose }: PropertyPanelProps) {
   const [showHelper, setShowHelper] = useState(false);
+  
+  // AI Generation State
+  const [genModalOpen, setGenModalOpen] = useState(false);
+  const [genPrompt, setGenPrompt] = useState('');
+  const [genTargetParam, setGenTargetParam] = useState<{name: string, language: string} | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
   const { workflows } = useDataStore();
 
   const actionDef = useMemo(() => 
@@ -49,8 +58,53 @@ export function PropertyPanel({ selectedNode, nodes, inputs, onUpdate, onClose }
       navigator.clipboard.writeText(text);
   };
 
+  const handleGenerate = async () => {
+      if (!genTargetParam || !genPrompt.trim()) return;
+      setIsGenerating(true);
+      try {
+          const currentVal = inputMappings[genTargetParam.name]?.value || '';
+          const code = await generateCode(genTargetParam.language, genPrompt, String(currentVal));
+          updateMapping(genTargetParam.name, 'constant', code);
+          setGenModalOpen(false);
+          setGenPrompt('');
+      } catch (err) {
+          alert(`Error generating code: ${err}`);
+      } finally {
+          setIsGenerating(false);
+      }
+  };
+
   return (
     <div className="w-[640px] bg-white border-l border-slate-200 flex flex-col h-full shadow-xl z-20 absolute right-0 top-0 bottom-0">
+      {genModalOpen && (
+          <div className="absolute inset-0 z-50 bg-white/90 flex items-center justify-center p-8 backdrop-blur-sm">
+              <div className="bg-white border border-slate-200 shadow-2xl rounded-lg p-6 w-full max-w-lg">
+                  <h3 className="text-lg font-semibold mb-2">Generate Code with AI</h3>
+                  <p className="text-sm text-slate-500 mb-4">Describe what you want the code to do. Using {genTargetParam?.language}.</p>
+                  
+                  <textarea
+                      className="w-full h-32 p-3 border border-slate-300 rounded text-sm mb-4 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="e.g. List all files in the current directory..."
+                      value={genPrompt}
+                      onChange={e => setGenPrompt(e.target.value)}
+                      autoFocus
+                  />
+                  
+                  <div className="flex justify-end gap-2">
+                      <button onClick={() => setGenModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+                      <button 
+                        onClick={handleGenerate} 
+                        disabled={isGenerating || !genPrompt.trim()}
+                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                      >
+                          {isGenerating && <Loader2 size={14} className="animate-spin" />}
+                          Generate
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {showHelper && (
           <div className="absolute right-full top-0 w-72 bg-white border border-slate-200 shadow-xl rounded-l-lg mr-1 h-full overflow-y-auto p-4 flex flex-col gap-4 z-50">
               <div className="flex justify-between items-center border-b pb-2">
@@ -182,19 +236,38 @@ export function PropertyPanel({ selectedNode, nodes, inputs, onUpdate, onClose }
                                     <option value="true">True</option>
                                 </select>
                              ) : (
-                                <div className="border border-slate-300 rounded overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-slate-50">
-                                    <Editor
-                                        value={String(mapping.value)}
-                                        onValueChange={code => updateMapping(param.name, 'constant', param.type === 'number' ? Number(code) : code)}
-                                        highlight={code => highlight(code, languages.markdown || languages.js, 'markdown')}
-                                        padding={10}
-                                        style={{
-                                            fontFamily: 'monospace',
-                                            fontSize: 12,
-                                            minHeight: '60px',
-                                        }}
-                                        className="min-h-[60px]"
-                                    />
+                                <div className="space-y-1">
+                                    {(param as ActionParameter).language && (
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={() => {
+                                                    setGenTargetParam({ name: param.name, language: (param as ActionParameter).language! });
+                                                    setGenModalOpen(true);
+                                                }}
+                                                className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1 font-medium bg-purple-50 px-2 py-0.5 rounded border border-purple-100"
+                                            >
+                                                <Wand2 size={10} /> Generate
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="border border-slate-300 rounded overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-slate-50">
+                                        <Editor
+                                            value={String(mapping.value)}
+                                            onValueChange={code => updateMapping(param.name, 'constant', param.type === 'number' ? Number(code) : code)}
+                                            highlight={code => {
+                                                const lang = (param as ActionParameter).language || 'markdown';
+                                                const grammar = languages[lang] || languages.markdown;
+                                                return highlight(code, grammar, lang); 
+                                            }}
+                                            padding={10}
+                                            style={{
+                                                fontFamily: 'monospace',
+                                                fontSize: 12,
+                                                minHeight: '60px',
+                                            }}
+                                            className="min-h-[60px]"
+                                        />
+                                    </div>
                                 </div>
                              )
                         )}

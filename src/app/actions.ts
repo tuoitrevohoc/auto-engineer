@@ -197,3 +197,48 @@ export async function cancelRun(id: string): Promise<void> {
         revalidatePath(`/workspaces/${run.workspaceId}/runs/${id}`);
     }
 }
+
+// SETTINGS
+
+export async function getSetting(key: string): Promise<string | undefined> {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any;
+    return row?.value;
+}
+
+export async function saveSetting(key: string, value: string): Promise<void> {
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run(key, value, value);
+    revalidatePath('/settings');
+}
+
+export async function generateCode(language: string, prompt: string, currentCode: string): Promise<string> {
+    const apiKey = await getSetting('openai_api_key');
+    if (!apiKey) throw new Error('OpenAI API Key not configured in Settings.');
+
+    const finalPrompt = `Current code: '${currentCode}'\n\nHelp me write a short program using ${language} language\n\n${prompt}\nREturn only the code with comments, do not add any other text or conversation`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: finalPrompt }],
+            temperature: 0.2
+        })
+    });
+
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`OpenAI Error: ${err}`);
+    }
+
+    const data = await res.json();
+    let content = data.choices?.[0]?.message?.content || '';
+    
+    // Clean up markdown block if present
+    content = content.replace(/^```[a-z]*\n/, '').replace(/\n```$/, '');
+    
+    return content;
+}

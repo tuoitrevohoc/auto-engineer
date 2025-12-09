@@ -6,8 +6,10 @@ import { ConfirmAction } from './actions/ConfirmAction';
 import { UserInputAction } from './actions/UserInputAction';
 import { SetDescriptionAction } from './actions/SetDescriptionAction';
 import { AddLogAction } from './actions/AddLogAction';
-import { ForEachFolderAction } from './actions/ForEachFolderAction';
+import { NewTempFolderAction } from './actions/NewTempFolderAction';
 import { ForEachListAction } from './actions/ForEachListAction';
+import { AskChatGPTAction } from './actions/AskChatGPTAction';
+import { SplitStringAction } from './actions/SplitStringAction';
 
 const actionInstances: WorkflowAction[] = [
   new GitCheckoutAction(),
@@ -16,8 +18,10 @@ const actionInstances: WorkflowAction[] = [
   new UserInputAction(),
   new SetDescriptionAction(),
   new AddLogAction(),
-  new ForEachFolderAction(),
+  new NewTempFolderAction(),
   new ForEachListAction(),
+  new AskChatGPTAction(),
+  new SplitStringAction(),
 ];
 
 export const ACTION_INSTANCES: Record<string, WorkflowAction> = actionInstances.reduce((acc, action) => {
