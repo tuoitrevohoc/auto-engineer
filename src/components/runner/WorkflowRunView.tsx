@@ -1,29 +1,14 @@
 'use client';
 
-import { 
-  ReactFlow, 
-  Background, 
-  Controls, 
-  useNodesState, 
-  useEdgesState, 
-  ReactFlowProvider,
-  useReactFlow 
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css'; 
-
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { StepNode } from '@/components/workflow/StepNode';
-import { Workflow, WorkflowRun, Workspace, StepExecutionState, WorkflowNode } from '@/types/workflow';
+import { StepListItem } from '@/components/workflow/StepListItem';
+import { Workflow, WorkflowRun, Workspace, WorkflowNode } from '@/types/workflow';
 import { getRun } from '@/app/actions';
 import { useDataStore } from '@/store/dataStore';
 import clsx from 'clsx';
-import { Check, Loader2, Play, Notebook } from 'lucide-react';
+import { Loader2, Notebook, ArrowDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-
-const nodeTypes = {
-  stepNode: StepNode,
-};
 
 interface RunViewContentProps {
   workflow: Workflow;
@@ -44,31 +29,18 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
   }, [initialRun, createRun]);
 
   const run = runs.find(r => r.id === initialRun.id) || initialRun;
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(workflow.edges);
-  const { fitView } = useReactFlow();
-
-  // Sync nodes with run state
-  useEffect(() => {
-    const mergedNodes = workflow.nodes.map(node => {
-        const stepState = run.steps[node.id];
-        return {
-            ...node,
-            data: {
-                ...node.data,
-                executionStatus: stepState?.status || 'idle'
-            },
-            draggable: false, 
-            selectable: true,
-        };
-    });
-    setNodes(mergedNodes);
-  }, [workflow, run.steps, setNodes]);
-
-  // Initial fit
-  useEffect(() => {
-      setTimeout(() => fitView(), 100);
-  }, [fitView]);
+  
+  // Create nodes/steps list with status from run
+  const nodes = workflow.nodes.map(node => {
+      const stepState = run.steps[node.id];
+      return {
+          ...node,
+          data: {
+              ...node.data,
+              executionStatus: stepState?.status || 'idle'
+          }
+      };
+  });
 
   // Polling Loop
   useEffect(() => {
@@ -78,10 +50,6 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
          try {
              const fresh = await getRun(run.id);
              if (fresh) {
-                 // Update store
-                 // We need to merge carefully? 
-                 // Or just replace properties?
-                 // The store updateRun merges.
                  updateRun(run.id, {
                      status: fresh.status,
                      steps: fresh.steps,
@@ -113,7 +81,7 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
       if (!pausedStepId) return;
       
       const val = pausedNode?.data.actionId === 'confirm' ? confirm : resumeVal;
-      const outputs = { value: val, confirmed: val }; // simplify for both actions
+      const outputs = { value: val, confirmed: val }; 
       
       const newLogs = [`User provided input: ${val}`];
 
@@ -128,91 +96,96 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
           }
       };
 
-      updateRun(run.id, {
-          status: 'running',
-          steps: updatedSteps
-      });
+      updateRun(run.id, { status: 'running', steps: updatedSteps });
       setResumeVal('');
   };
-
+  
   const isForEach = pausedNode && (pausedNode.data.actionId === 'foreach-list' || pausedNode.data.actionId === 'foreach-folder');
 
   const pauseOverlay = pausedNode && run.status === 'paused' ? (
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white p-4 rounded-lg shadow-xl border-2 border-yellow-400 z-50 w-80">
-          <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
-              <Loader2 className="animate-spin text-yellow-500" /> 
-              {isForEach ? 'Waiting for children' : 'Action Required'}
-          </h3>
-          
-          {isForEach ? (
-               <div className="max-h-60 overflow-y-auto">
-                    <p className="text-sm text-slate-600 mb-2">Waiting for child workflows to complete...</p>
-                    <div className="space-y-1">
-                        {(() => {
-                             const outputs = run.steps[pausedNode!.id]?.outputs as { childRunIds?: string[], childStatuses?: Record<string, string> } | undefined;
-                             return outputs?.childRunIds?.map((cid: string) => {
-                                const status = outputs.childStatuses?.[cid] || 'unknown';
-                                return (
-                                    <div key={cid} className="flex items-center justify-between text-xs p-2 bg-slate-50 rounded border border-slate-100">
-                                        <span className="font-mono text-slate-500">{cid}</span>
-                                        <span className={clsx("font-medium uppercase", {
-                                            'text-blue-600': status === 'running',
-                                            'text-green-600': status === 'completed' || status === 'success',
-                                            'text-red-600': status === 'failed',
-                                            'text-slate-500': status === 'unknown'
-                                        })}>{status}</span>
-                                    </div>
-                                );
-                            });
-                        })()}
-                    </div>
-               </div>
-          ) : (
-              <>
-                  <div className="text-sm text-slate-600 mb-4">
-                      {pausedNode.data.label} (Step) requires input.
-                  </div>
-                  
-                  {pausedNode.data.actionId === 'confirm' ? (
-                      <div className="flex gap-2">
-                          <button onClick={() => handleResume(true)} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Confirm</button>
-                          <button onClick={() => handleResume(false)} className="flex-1 bg-slate-200 text-slate-800 py-2 rounded hover:bg-slate-300">Cancel</button>
-                      </div>
-                  ) : (
-                      <div>
-                          <input 
-                            type="text" 
-                            className="w-full border p-2 rounded mb-2" 
-                            autoFocus
-                            placeholder="Type here..."
-                            value={resumeVal}
-                            onChange={e => setResumeVal(e.target.value)}
-                          />
-                          <button onClick={() => handleResume(true)} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Submit</button>
-                      </div>
-                  )}
-              </>
-          )}
-      </div>
+       <div className="sticky top-4 mx-4 mb-4 bg-white p-4 rounded-lg shadow-xl border-2 border-yellow-400 z-20">
+           <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
+               <Loader2 className="animate-spin text-yellow-500" /> 
+               {isForEach ? 'Waiting for children' : 'Action Required'}
+           </h3>
+           
+           {isForEach ? (
+                <div className="max-h-60 overflow-y-auto">
+                     <p className="text-sm text-slate-600 mb-2">Waiting for child workflows to complete...</p>
+                     <div className="space-y-1">
+                         {(() => {
+                              const outputs = run.steps[pausedNode!.id]?.outputs as { childRunIds?: string[], childStatuses?: Record<string, string> } | undefined;
+                              return outputs?.childRunIds?.map((cid: string) => {
+                                 const status = outputs.childStatuses?.[cid] || 'unknown';
+                                 return (
+                                     <div key={cid} className="flex items-center justify-between text-xs p-2 bg-slate-50 rounded border border-slate-100">
+                                         <span className="font-mono text-slate-500">{cid}</span>
+                                         <span className={clsx("font-medium uppercase", {
+                                             'text-blue-600': status === 'running',
+                                             'text-green-600': status === 'completed' || status === 'success',
+                                             'text-red-600': status === 'failed',
+                                             'text-slate-500': status === 'unknown'
+                                         })}>{status}</span>
+                                     </div>
+                                 );
+                             });
+                         })()}
+                     </div>
+                </div>
+           ) : (
+               <>
+                   <div className="text-sm text-slate-600 mb-4">
+                       {pausedNode.data.label} requires input.
+                   </div>
+                   
+                   {pausedNode.data.actionId === 'confirm' ? (
+                       <div className="flex gap-2">
+                           <button onClick={() => handleResume(true)} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Confirm</button>
+                           <button onClick={() => handleResume(false)} className="flex-1 bg-slate-200 text-slate-800 py-2 rounded hover:bg-slate-300">Cancel</button>
+                       </div>
+                   ) : (
+                       <div>
+                           <input 
+                             type="text" 
+                             className="w-full border p-2 rounded mb-2" 
+                             autoFocus
+                             placeholder="Type here..."
+                             value={resumeVal}
+                             onChange={e => setResumeVal(e.target.value)}
+                           />
+                           <button onClick={() => handleResume(true)} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Submit</button>
+                       </div>
+                   )}
+               </>
+           )}
+       </div>
   ) : null;
 
   return (
     <div className="flex h-full">
-       <div className="flex-1 relative bg-slate-100 border-r border-slate-200">
-          <ReactFlow
-             nodes={nodes}
-             edges={edges}
-             onNodesChange={onNodesChange}
-             onEdgesChange={onEdgesChange}
-             nodeTypes={nodeTypes}
-             onNodeClick={(_, n) => setSelectedStepId(n.id)}
-             fitView
-          >
-             <Background />
-             <Controls />
-          </ReactFlow>
-
+       <div className="flex-1 relative bg-slate-50 border-r border-slate-200 overflow-y-auto">
+          {/* Pause Overlay (Sticky) */}
           {pauseOverlay}
+
+          {/* Steps List */}
+          <div className="p-8 pb-32 max-w-2xl mx-auto space-y-4">
+               {nodes.map((node, index) => (
+                    <div key={node.id} className="relative">
+                        <StepListItem 
+                             node={node} 
+                             index={index} 
+                             selected={selectedStepId === node.id}
+                             onSelect={() => setSelectedStepId(node.id)}
+                             readOnly={true}
+                        />
+                        {index < nodes.length - 1 && (
+                            <div className="flex justify-center py-2 text-slate-300">
+                                <ArrowDown size={20} />
+                            </div>
+                        )}
+                    </div>
+               ))}
+          </div>
        </div>
 
         {/* Right Panel: Logs and Info */}
@@ -246,7 +219,7 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
                     </div>
                 )}
 
-                {/* User Logs / Notebook */}
+                {/* User Logs */}
                 {run.userLogs && run.userLogs.length > 0 && (
                     <div className="space-y-3">
                         <h3 className="font-semibold text-slate-700 flex items-center gap-2 text-sm border-b pb-2">
@@ -290,7 +263,7 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
                             {activeStep.status === 'running' && <Loader2 className="animate-spin h-4 w-4 text-blue-500 mt-2" />}
                         </div>
                     ) : (
-                        <div className="text-sm text-slate-400 italic">Select a step in the graph to view technical debug logs.</div>
+                        <div className="text-sm text-slate-400 italic">Select a step in the list to view technical debug logs.</div>
                     )}
                 </div>
             </div>
@@ -323,9 +296,5 @@ function RunViewContent({ workflow, run: initialRun, workspace }: RunViewContent
 }
 
 export function WorkflowRunView(props: RunViewContentProps) {
-    return (
-        <ReactFlowProvider>
-            <RunViewContent {...props} />
-        </ReactFlowProvider>
-    );
+    return <RunViewContent {...props} />;
 }
