@@ -2,7 +2,7 @@
 import db from './db';
 import { Workflow, WorkflowRun, Workspace, WorkflowNode, StepExecutionState } from '@/types/workflow';
 import { getNextSteps, resolveInputs } from './workflow-utils';
-import { getActionInstance } from './action-registry';
+import { getActionInstance } from './action-implementations';
 import { ExecutionContext, ExecutionResult } from './actions/Action';
 
 export async function processRun(runId: string) {
@@ -16,6 +16,16 @@ export async function processRun(runId: string) {
     if (!workflow || !workspace) {
         updateRunStatus(runId, 'failed');
         return;
+    }
+
+    // Ensure workspace directory exists
+    try {
+        const fs = require('fs');
+        if (workspace.workingDirectory && !fs.existsSync(workspace.workingDirectory)) {
+            fs.mkdirSync(workspace.workingDirectory, { recursive: true });
+        }
+    } catch (err) {
+        console.error(`Failed to create workspace dir: ${workspace.workingDirectory}`, err);
     }
 
     // Determine executable steps

@@ -73,6 +73,21 @@ export async function createWorkspaceAction(workspace: Workspace): Promise<void>
   revalidatePath('/workspaces');
 }
 
+export async function updateWorkspaceAction(workspace: Workspace): Promise<void> {
+    const st = db.prepare(`
+        UPDATE workspaces SET name = @name, workingDirectory = @workingDirectory WHERE id = @id
+    `);
+    st.run(workspace);
+    revalidatePath('/workspaces');
+    revalidatePath(`/workspaces/${workspace.id}`);
+}
+
+export async function deleteWorkspaceAction(id: string): Promise<void> {
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
+    db.prepare('DELETE FROM runs WHERE workspaceId = ?').run(id); // Cascade delete runs
+    revalidatePath('/workspaces');
+}
+
 // RUNS
 
 export async function getRuns(): Promise<WorkflowRun[]> {

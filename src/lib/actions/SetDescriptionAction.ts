@@ -1,18 +1,10 @@
 
 import { ActionDefinition } from '@/types/workflow';
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
+import { SetDescriptionDefinition } from './definitions';
 
 export class SetDescriptionAction implements WorkflowAction {
-  definition: ActionDefinition = {
-    id: 'set-description',
-    name: 'Set Workflow Description',
-    description: 'Update the description of the current workflow (Markdown supported)',
-    parameters: [
-      { name: 'description', label: 'Description Text', type: 'text', required: true, description: 'Markdown allowed' },
-    ],
-    inputs: [],
-    outputs: [],
-  };
+  definition = SetDescriptionDefinition;
 
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
     const logs: string[] = [`Executing action: ${this.definition.id}`];

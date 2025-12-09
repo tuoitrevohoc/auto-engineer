@@ -1,18 +1,10 @@
 
 import { ActionDefinition } from '@/types/workflow';
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
+import { AddLogDefinition } from './definitions';
 
 export class AddLogAction implements WorkflowAction {
-  definition: ActionDefinition = {
-    id: 'add-log',
-    name: 'Add Log Entry',
-    description: 'Append a markdown log entry to the run view',
-    parameters: [
-      { name: 'content', label: 'Log Content', type: 'text', required: true, description: 'Markdown allowed' },
-    ],
-    inputs: [],
-    outputs: [],
-  };
+  definition = AddLogDefinition;
 
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
     const logs: string[] = [`Executing action: ${this.definition.id}`];

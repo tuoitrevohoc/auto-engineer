@@ -1,23 +1,10 @@
 
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
 import { ActionDefinition, Workflow } from '@/types/workflow';
+import { ForEachListDefinition } from './definitions';
 
 export class ForEachListAction implements WorkflowAction {
-  definition: ActionDefinition = {
-    id: 'foreach-list',
-    name: 'For Each Item',
-    description: 'Iterate through a list of items and run a child workflow for each.',
-    parameters: [
-      { name: 'items', label: 'Items List', type: 'json', required: true, description: 'Array of items' },
-      { name: 'workflowId', label: 'Run Workflow', type: 'workflow-id', required: true },
-      { name: 'itemVariableName', label: 'Item Variable Name', type: 'string', defaultValue: 'item', description: 'Name of the input variable in child workflow' },
-    ],
-    inputs: [],
-    outputs: [
-      { name: 'totalProcessed', type: 'number' },
-      { name: 'results', type: 'json' }
-    ],
-  };
+  definition = ForEachListDefinition;
 
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
     const logs: string[] = [`Executing action: ${this.definition.id}`];

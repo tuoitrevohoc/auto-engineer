@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Workflow, Workspace, WorkflowRun } from '@/types/workflow';
 import { 
   getWorkflows, saveWorkflow, deleteWorkflowAction, 
-  getWorkspaces, createWorkspaceAction, 
+  getWorkspaces, createWorkspaceAction, updateWorkspaceAction, deleteWorkspaceAction,
   getRuns, saveRun, deleteRun, cancelRun
 } from '@/app/actions';
 
@@ -17,6 +17,8 @@ interface DataState {
   deleteWorkflow: (id: string) => void;
 
   addWorkspace: (workspace: Workspace) => void;
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
+  deleteWorkspace: (id: string) => void;
   
   createRun: (run: WorkflowRun) => void;
   updateRun: (id: string, run: Partial<WorkflowRun>) => void;
@@ -60,6 +62,25 @@ export const useDataStore = create<DataState>((set, get) => ({
   addWorkspace: (workspace) => {
       set((state) => ({ workspaces: [...state.workspaces, workspace] }));
       createWorkspaceAction(workspace).catch(console.error);
+  },
+
+  updateWorkspace: (id, updates) => {
+    const state = get();
+    const existing = state.workspaces.find(w => w.id === id);
+    if (!existing) return;
+    
+    const updated = { ...existing, ...updates };
+    
+    set((state) => ({
+      workspaces: state.workspaces.map((w) => (w.id === id ? updated : w)),
+    }));
+    
+    updateWorkspaceAction(updated).catch(console.error);
+  },
+
+  deleteWorkspace: (id) => {
+      set((state) => ({ workspaces: state.workspaces.filter((w) => w.id !== id) }));
+      deleteWorkspaceAction(id).catch(console.error);
   },
 
   createRun: (run) => {

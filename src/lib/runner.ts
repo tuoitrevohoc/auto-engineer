@@ -1,6 +1,6 @@
 import { Workflow, WorkflowRun, Workspace, WorkflowNode, WorkflowEdge } from '@/types/workflow';
 import { useDataStore } from '@/store/dataStore';
-import { getActionInstance } from './action-registry';
+import { getActionInstance } from './action-implementations';
 import { getNextSteps, resolveInputs } from './workflow-utils';
 export { getNextSteps, resolveInputs };
 

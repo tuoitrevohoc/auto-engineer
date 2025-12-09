@@ -1,23 +1,10 @@
 
 import { ActionDefinition } from '@/types/workflow';
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
+import { ForEachFolderDefinition } from './definitions';
 
 export class ForEachFolderAction implements WorkflowAction {
-  definition: ActionDefinition = {
-    id: 'foreach-folder',
-    name: 'For Each Folder',
-    description: 'Iterate over folders matching a pattern and run a sub-workflow',
-    parameters: [
-      { name: 'pattern', label: 'Glob Pattern', type: 'string', required: true, defaultValue: '*' },
-      { name: 'childWorkflowId', label: 'Child Workflow ID', type: 'string', required: true },
-    ],
-    inputs: [
-      { name: 'basePath', type: 'string', required: true },
-    ],
-    outputs: [
-      { name: 'totalProcessed', type: 'number' },
-    ],
-  };
+  definition = ForEachFolderDefinition;
 
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
     const logs: string[] = [`Executing action: ${this.definition.id}`];

@@ -3,7 +3,7 @@
 import { useDataStore } from '@/store/dataStore';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, Clock, CheckCircle, XCircle, PauseCircle, ChevronDown, ChevronRight, Save, Trash } from 'lucide-react';
 import { WorkflowRun } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
@@ -13,9 +13,32 @@ export default function WorkspaceDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
-  const { workspaces, runs, workflows, createRun, syncRuns } = useDataStore();
+  const { workspaces, runs, workflows, createRun, syncRuns, updateWorkspace, deleteWorkspace } = useDataStore();
   
   const workspace = workspaces.find((w) => w.id === id);
+
+  const [editName, setEditName] = useState('');
+  const [editWorkingDir, setEditWorkingDir] = useState('');
+
+  useEffect(() => {
+    if (workspace) {
+        setEditName(workspace.name);
+        setEditWorkingDir(workspace.workingDirectory);
+    }
+  }, [workspace]);
+
+  const handleSaveWorkspace = () => {
+    if (workspace) {
+        updateWorkspace(workspace.id, { name: editName, workingDirectory: editWorkingDir });
+    }
+  };
+
+  const handleDeleteWorkspace = () => {
+      if (confirm('Delete this workspace and all its runs? This cannot be undone.')) {
+          deleteWorkspace(id);
+          router.push('/'); 
+      }
+  };
 
   // Filtering & Pagination
   const [showCompleted, setShowCompleted] = useState(false);
@@ -92,10 +115,34 @@ export default function WorkspaceDetailPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-800">{workspace.name}</h1>
-        <div className="font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded inline-block mt-2">
-            {workspace.workingDirectory}
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="flex-1 max-w-3xl">
+          <input 
+              className="text-2xl font-bold text-slate-800 w-full mb-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 -ml-1 transition-colors outline-none"
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              placeholder="Workspace Name"
+          />
+          <div className="flex items-center gap-2">
+               <span className="text-slate-400 font-mono text-sm">Dir:</span>
+               <input 
+                  className="font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded w-full border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white trantision-all outline-none text-sm"
+                  value={editWorkingDir}
+                  onChange={e => setEditWorkingDir(e.target.value)}
+                  placeholder="/path/to/working/directory"
+               />
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 pt-1">
+           {(editName !== workspace?.name || editWorkingDir !== workspace?.workingDirectory) && (
+                <button onClick={handleSaveWorkspace} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 shadow-sm">
+                    <Save size={14} /> Save
+                </button>
+           )}
+           <button onClick={handleDeleteWorkspace} className="p-2 text-slate-400 hover:text-red-600 rounded hover:bg-red-50" title="Delete Workspace">
+                <Trash size={18} />
+           </button>
         </div>
       </div>
 
