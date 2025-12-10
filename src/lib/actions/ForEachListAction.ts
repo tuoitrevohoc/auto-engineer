@@ -15,7 +15,7 @@ export class ForEachListAction implements WorkflowAction {
     } else if (typeof inputs.items === 'string') {
         items = inputs.items.split('\n').map(s => s.trim()).filter(s => s.length > 0);
     } else {
-        throw new Error('Input "items" must be an array or a newline-separated string');
+        throw new Error('Input "items" must be an array or a newline-separated string' + JSON.stringify(inputs));
     }
 
     const workflowId = String(inputs.workflowId);

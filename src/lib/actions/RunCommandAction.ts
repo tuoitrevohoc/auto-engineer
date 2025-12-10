@@ -18,21 +18,58 @@ export class RunCommandAction implements WorkflowAction {
     logs.push(`CWD: ${cwd}`);
 
     return new Promise((resolve) => {
-        const { exec } = require('child_process');
-        exec(fullCommand, { cwd }, (error: any, stdout: string, stderr: string) => {
-            const exitCode = error?.code || 0;
-            const sout = stdout?.trim() || '';
-            const serr = stderr?.trim() || '';
+        const { spawn } = require('child_process');
+        const child = spawn(fullCommand, { 
+            cwd, 
+            shell: true,
+            stdio: ['pipe', 'pipe', 'pipe'] // Explicitly pipe stdio to control it
+        });
+
+        // Close stdin immediately as requested
+        child.stdin.end();
+
+        let stdoutData = '';
+        let stderrData = '';
+
+        child.stdout.on('data', (data: Buffer) => {
+            const chunk = data.toString();
+            stdoutData += chunk;
+            // Optional: Real-time logging if needed, but we gather it for the result
+            // logs.push(chunk); 
+        });
+
+        child.stderr.on('data', (data: Buffer) => {
+            const chunk = data.toString();
+            stderrData += chunk;
+        });
+
+        // 10 minutes timeout
+        const timeout = setTimeout(() => {
+            child.kill();
+            logs.push('Command timed out after 10 minutes');
+            resolve({
+                status: 'failed',
+                outputs: { stdout: stdoutData, stderr: stderrData, exitCode: -1 },
+                error: 'Command timed out',
+                logs
+            });
+        }, 10 * 60 * 1000);
+
+        child.on('close', (code: number) => {
+            clearTimeout(timeout);
+            
+            const sout = stdoutData.trim();
+            const serr = stderrData.trim();
 
             if (sout) logs.push(`STDOUT:\n${sout}`);
             if (serr) logs.push(`STDERR:\n${serr}`);
 
-            if (error) {
-                logs.push(`Command failed with exit code ${exitCode}`);
+            if (code !== 0) {
+                logs.push(`Command failed with exit code ${code}`);
                 resolve({
                     status: 'failed',
-                    outputs: { stdout: sout, stderr: serr, exitCode },
-                    error: error.message,
+                    outputs: { stdout: sout, stderr: serr, exitCode: code },
+                    error: `Command failed with exit code ${code}`,
                     logs
                 });
             } else {
@@ -42,6 +79,17 @@ export class RunCommandAction implements WorkflowAction {
                     logs
                 });
             }
+        });
+
+        child.on('error', (err: Error) => {
+            clearTimeout(timeout);
+            logs.push(`Spawn error: ${err.message}`);
+            resolve({
+                status: 'failed',
+                outputs: { stdout: stdoutData, stderr: stderrData, exitCode: -1 },
+                error: err.message,
+                logs
+            });
         });
     });
   }
