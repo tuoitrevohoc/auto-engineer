@@ -9,6 +9,9 @@ import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
 import { getWorkspaceRuns } from '@/app/actions';
 import { RunInputControls } from '@/components/runner/RunInputControls';
+import { uploadImage } from '@/app/actions';
+import { toast } from 'sonner';
+import { ImageBrowser } from '@/components/common/ImageBrowser';
 
 export default function WorkspaceDetailPage() {
   const params = useParams();
@@ -158,6 +161,7 @@ export default function WorkspaceDetailPage() {
   
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
+  const [browsingInputName, setBrowsingInputName] = useState<string | null>(null);
 
   const selectedWorkflow = workflows.find(w => w.id === selectedWorkflowId);
 
@@ -360,6 +364,49 @@ export default function WorkspaceDetailPage() {
                                                     <option value="true">True</option>
                                                     <option value="false">False</option>
                                                 </select>
+                                            ) : input.type === 'image' ? (
+                                                <div className="space-y-1">
+                                                     <input 
+                                                       type="text"
+                                                       className="w-full p-2 border border-slate-300 rounded text-sm bg-slate-50 text-slate-500"
+                                                       value={inputValues[input.name] || ''}
+                                                       placeholder="Image ID (upload or paste)"
+                                                       onChange={(e) => setInputValues({...inputValues, [input.name]: e.target.value})}
+                                                     />
+                                                     <div className="flex gap-1">
+                                                         <input 
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) {
+                                                                    if (file.size > 10 * 1024 * 1024) {
+                                                                        toast.error('File too large. Max 10MB.');
+                                                                        return;
+                                                                    }
+                                                                    const formData = new FormData();
+                                                                    formData.append('file', file);
+                                                                    try {
+                                                                        const id = await uploadImage(formData);
+                                                                        setInputValues(prev => ({...prev, [input.name]: id}));
+                                                                        toast.success('Image uploaded');
+                                                                    } catch (err) {
+                                                                        toast.error('Upload failed');
+                                                                        console.error(err);
+                                                                    }
+                                                                }
+                                                            }}
+                                                         />
+                                                          <button
+                                                            onClick={() => setBrowsingInputName(input.name)}
+                                                            className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs hover:bg-slate-200 border border-slate-200 whitespace-nowrap"
+                                                            title="Browse existing images"
+                                                          >
+                                                              Browse
+                                                          </button>
+                                                     </div>
+                                                </div>
                                             ) : (
                                                 <input 
                                                   type={input.type === 'number' ? 'number' : 'text'}
@@ -387,7 +434,15 @@ export default function WorkspaceDetailPage() {
             </div>
         </div>
       </div>
-
+        <ImageBrowser 
+           isOpen={!!browsingInputName}
+           onClose={() => setBrowsingInputName(null)}
+           onSelect={(id) => {
+               if (browsingInputName) {
+                   setInputValues(prev => ({...prev, [browsingInputName]: id}));
+               }
+           }}
+       />
     </div>
   );
 }

@@ -40,6 +40,13 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS images (
+    id TEXT PRIMARY KEY,
+    filename TEXT,
+    path TEXT,
+    createdAt TEXT
+  );
 `);
 
 export default db;

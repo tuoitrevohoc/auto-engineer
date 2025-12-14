@@ -3,6 +3,10 @@
 import db from '@/lib/db';
 import { Workflow, Workspace, WorkflowRun, WorkflowNode, WorkflowEdge, StepExecutionState } from '@/types/workflow';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import fs from 'fs';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 // WORKFLOWS
 
@@ -210,6 +214,7 @@ export async function saveSetting(key: string, value: string): Promise<void> {
     revalidatePath('/settings');
 }
 
+
 export async function generateCode(language: string, prompt: string, currentCode: string): Promise<string> {
     const apiKey = await getSetting('openai_api_key');
     if (!apiKey) throw new Error('OpenAI API Key not configured in Settings.');
@@ -242,3 +247,79 @@ export async function generateCode(language: string, prompt: string, currentCode
     
     return content;
 }
+
+// IMAGES
+
+export async function uploadImage(formData: FormData): Promise<string> {
+    const file = formData.get('file') as File;
+    if (!file) throw new Error('No file uploaded');
+
+    if (file.size > 10 * 1024 * 1024) {
+        throw new Error('File size exceeds 10MB limit');
+    }
+
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    // Dynamic import to avoid edge runtime issues if any (though 'use server' usually runs in node)
+    const fs = await import('fs');
+    const path = await import('path');
+    const { v4: uuidv4 } = await import('uuid');
+
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const id = uuidv4();
+    const ext = path.extname(file.name);
+    const filename = `${id}${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const publicPath = `/uploads/${filename}`;
+    
+    db.prepare('INSERT INTO images (id, filename, path, createdAt) VALUES (?, ?, ?, ?)').run(id, file.name, publicPath, new Date().toISOString());
+
+    return id;
+}
+
+interface GetImagesResult {
+    images: {id: string, filename: string, path: string, createdAt: string}[];
+    total: number;
+}
+
+export async function getImages(page: number = 1, limit: number = 15): Promise<GetImagesResult> {
+    const offset = (page - 1) * limit;
+    const images = db.prepare('SELECT * FROM images ORDER BY createdAt DESC LIMIT ? OFFSET ?').all(limit, offset) as any[];
+    const countResult = db.prepare('SELECT COUNT(*) as count FROM images').get() as { count: number };
+    
+    return {
+        images,
+        total: countResult.count
+    };
+}
+
+export async function deleteImages(ids: string[]) {
+    if (ids.length === 0) return;
+
+    try {
+        const placeholders = ids.map(() => '?').join(',');
+        const images = db.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`).all(...ids) as any[];
+
+        for (const img of images) {
+             const filePath = path.join(process.cwd(), 'public', img.path);
+             if (fs.existsSync(filePath)) {
+                 fs.unlinkSync(filePath);
+             }
+        }
+
+        db.prepare(`DELETE FROM images WHERE id IN (${placeholders})`).run(...ids);
+        revalidatePath('/gallery');
+    } catch (error) {
+        console.error('Failed to delete images:', error);
+        throw new Error('Failed to delete images');
+    }
+}
+

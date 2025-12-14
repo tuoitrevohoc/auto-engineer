@@ -10,7 +10,9 @@ import {
     ForEachListDefinition,
     AskChatGPTDefinition,
     SplitStringDefinition,
-    AskGeminiDefinition
+    AskGeminiDefinition,
+    AddImageLogDefinition,
+    GenerateImageDefinition 
 } from './actions/definitions';
 
 export const ACTION_REGISTRY: ActionDefinition[] = [
@@ -24,7 +26,9 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
     ForEachListDefinition,
     AskChatGPTDefinition,
     SplitStringDefinition,
-    AskGeminiDefinition
+    AskGeminiDefinition,
+    AddImageLogDefinition,
+    GenerateImageDefinition
 ];
 
 export const getActionDefinition = (id: string): ActionDefinition | undefined => {

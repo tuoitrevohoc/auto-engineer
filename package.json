@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^1.33.0",
     "@xyflow/react": "^12.10.0",
     "better-sqlite3": "^12.5.0",
     "clsx": "^2.1.1",

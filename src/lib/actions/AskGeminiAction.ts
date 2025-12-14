@@ -1,6 +1,7 @@
 import { WorkflowAction, ExecutionContext, ExecutionResult } from './Action';
 import { AskGeminiDefinition } from './definitions';
 import { getSetting } from '@/app/actions';
+import { GoogleGenAI } from "@google/genai";
 
 export class AskGeminiAction implements WorkflowAction {
   definition = AskGeminiDefinition;
@@ -25,29 +26,14 @@ export class AskGeminiAction implements WorkflowAction {
     logs.push(`Prompt length: ${prompt.length} chars`);
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const client = new GoogleGenAI({ apiKey });
         
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: prompt }]
-                }]
-            })
+        const response = await client.models.generateContent({
+            model: model,
+            contents: [{ text: prompt }],
         });
 
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Google API Error ${res.status}: ${errText}`);
-        }
-
-        const data = await res.json();
-        // Extract text from Gemini response structure
-        // Response format: { candidates: [ { content: { parts: [ { text: "..." } ] } } ] }
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const content = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
         
         logs.push('Received response from Google Gemini.');
 

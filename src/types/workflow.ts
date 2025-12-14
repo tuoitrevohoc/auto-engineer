@@ -59,7 +59,7 @@ export type WorkflowEdge = Edge;
 export interface WorkflowInput {
   name: string;
   label?: string;
-  type: 'text' | 'number' | 'boolean';
+  type: 'text' | 'number' | 'boolean' | 'image';
   defaultValue?: string | number | boolean;
 }
 

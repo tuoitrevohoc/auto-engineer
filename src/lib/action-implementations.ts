@@ -11,6 +11,8 @@ import { ForEachListAction } from './actions/ForEachListAction';
 import { AskChatGPTAction } from './actions/AskChatGPTAction';
 import { SplitStringAction } from './actions/SplitStringAction';
 import { AskGeminiAction } from './actions/AskGeminiAction';
+import { AddImageLogAction } from './actions/AddImageLogAction';
+import { GenerateImageAction } from './actions/GenerateImageAction';
 
 const actionInstances: WorkflowAction[] = [
   new GitCheckoutAction(),
@@ -24,6 +26,8 @@ const actionInstances: WorkflowAction[] = [
   new AskChatGPTAction(),
   new SplitStringAction(),
   new AskGeminiAction(),
+  new AddImageLogAction(),
+  new GenerateImageAction(),
 ];
 
 export const ACTION_INSTANCES: Record<string, WorkflowAction> = actionInstances.reduce((acc, action) => {

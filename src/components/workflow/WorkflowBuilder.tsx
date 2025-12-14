@@ -9,7 +9,9 @@ import { StepListItem } from './StepListItem';
 import { Workflow, WorkflowNode, WorkflowInput, WorkflowEdge } from '@/types/workflow';
 import { getActionDefinition } from '@/lib/action-registry';
 import { useDataStore } from '@/store/dataStore';
+import { uploadImage } from '@/app/actions';
 import { Save, Settings, Trash, Plus, X, ArrowDown, Play } from 'lucide-react';
+import { ImageBrowser } from '@/components/common/ImageBrowser';
 import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
 
@@ -336,6 +338,8 @@ export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProp
 }
 
 function InputsModal({ inputs, onChange, onClose }: { inputs: WorkflowInput[], onChange: (i: WorkflowInput[]) => void, onClose: () => void }) {
+    const [showImageBrowserFor, setShowImageBrowserFor] = useState<number | null>(null);
+
     const addInput = () => {
         onChange([...inputs, { name: '', type: 'text', label: '', defaultValue: '' }]);
     };
@@ -390,6 +394,7 @@ function InputsModal({ inputs, onChange, onClose }: { inputs: WorkflowInput[], o
                                             <option value="text">Text</option>
                                             <option value="number">Number</option>
                                             <option value="boolean">Boolean</option>
+                                            <option value="image">Image</option>
                                         </select>
                                     </div>
                                 </div>
@@ -405,12 +410,48 @@ function InputsModal({ inputs, onChange, onClose }: { inputs: WorkflowInput[], o
                                     </div>
                                     <div className="flex-1">
                                         <label className="text-xs font-semibold text-slate-500 uppercase">Default Value</label>
-                                        <input 
-                                            value={String(input.defaultValue || '')} 
-                                            onChange={(e) => updateInput(idx, 'defaultValue', e.target.value)}
-                                            placeholder="Default..."
-                                            className="w-full p-1.5 border border-slate-300 rounded text-sm"
-                                        />
+                                        {input.type === 'image' ? (
+                                            <div className="space-y-1">
+                                                 {input.defaultValue && <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded truncate border border-green-200">ID: {input.defaultValue}</div>}
+                                                 <div className="flex gap-1">
+                                                     <input 
+                                                         type="file" 
+                                                         accept="image/*"
+                                                         onChange={async (e) => {
+                                                             const file = e.target.files?.[0];
+                                                             if (file) {
+                                                                 if (file.size > 10 * 1024 * 1024) {
+                                                                     toast.error('File too large. Max 10MB.');
+                                                                     return;
+                                                                 }
+                                                                 const formData = new FormData();
+                                                                 formData.append('file', file);
+                                                                 try {
+                                                                    const id = await uploadImage(formData);
+                                                                    updateInput(idx, 'defaultValue', id);
+                                                                    toast.success('Image uploaded');
+                                                                 } catch(e) { toast.error('Upload failed'); }
+                                                             }
+                                                         }}
+                                                         className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                                     />
+                                                     <button
+                                                        onClick={() => setShowImageBrowserFor(idx)}
+                                                        className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs hover:bg-slate-200 border border-slate-200"
+                                                        title="Browse existing images"
+                                                     >
+                                                         Browse
+                                                     </button>
+                                                 </div>
+                                            </div>
+                                        ) : (
+                                            <input 
+                                                value={String(input.defaultValue || '')} 
+                                                onChange={(e) => updateInput(idx, 'defaultValue', e.target.value)}
+                                                placeholder="Default..."
+                                                className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -430,6 +471,16 @@ function InputsModal({ inputs, onChange, onClose }: { inputs: WorkflowInput[], o
                      </button>
                 </div>
             </div>
+
+            <ImageBrowser 
+                isOpen={showImageBrowserFor !== null}
+                onClose={() => setShowImageBrowserFor(null)}
+                onSelect={(id) => {
+                    if (showImageBrowserFor !== null) {
+                        updateInput(showImageBrowserFor, 'defaultValue', id);
+                    }
+                }}
+            />
         </div>
     );
 }

@@ -153,3 +153,30 @@ export const AskGeminiDefinition: ActionDefinition = {
       { name: 'response', type: 'string' },
     ],
 };
+
+export const AddImageLogDefinition: ActionDefinition = {
+    id: 'add-image-log',
+    name: 'Add Image to Log',
+    description: 'Render an image in the logs',
+    parameters: [
+      { name: 'imageId', label: 'Image ID', type: 'string', required: true, description: 'ID of the uploaded image' },
+      { name: 'caption', label: 'Caption', type: 'string' },
+    ],
+    inputs: [],
+    outputs: [],
+};
+
+export const GenerateImageDefinition: ActionDefinition = {
+    id: 'generate-image',
+    name: 'Generate Image (Gemini)',
+    description: 'Generate an image using Google Gemini/Imagen',
+    parameters: [
+      { name: 'prompt', label: 'Prompt', type: 'text', required: true, description: 'Image description' },
+      { name: 'model', label: 'Model', type: 'string', defaultValue: 'google/gemini-3-pro-image' },
+      { name: 'inputImageId', label: 'Input Image ID', type: 'string', description: 'Optional input image for image-to-image' },
+    ],
+    inputs: [],
+    outputs: [
+      { name: 'imageId', type: 'string' },
+    ],
+};
