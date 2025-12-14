@@ -9,7 +9,8 @@ import { StepListItem } from './StepListItem';
 import { Workflow, WorkflowNode, WorkflowInput, WorkflowEdge } from '@/types/workflow';
 import { getActionDefinition } from '@/lib/action-registry';
 import { useDataStore } from '@/store/dataStore';
-import { Save, Settings, Trash, Plus, X, ArrowDown } from 'lucide-react';
+import { Save, Settings, Trash, Plus, X, ArrowDown, Play } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
 
 interface WorkflowBuilderProps {
@@ -18,6 +19,7 @@ interface WorkflowBuilderProps {
 }
 
 export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProps) {
+  const router = useRouter();
   const [nodes, setNodes] = useState<WorkflowNode[]>(initialWorkflow.nodes);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [name, setName] = useState(initialWorkflow.name);
@@ -81,64 +83,10 @@ export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProp
              const newNodes = [...prev];
              const [moved] = newNodes.splice(draggedNodeIndex, 1);
              
-             // Adjust insertion index if we removed an item before it
-             // If we remove source (index S), and want to insert at target (index T).
-             // If S < T: The index T in original array corresponds to T-1 in new array (after removal).
-             // But wait, if I handleDrop on element 2. I want to insert BEFORE element 2 (originally).
-             // Index 2 is the target.
-             // If I drag 0 to 2. Remove 0. 1 becomes 0, 2 becomes 1.
-             // I want to insert at 1?
-             // Since I passed index from map, let's treat index as "Position in array BEFORE modification".
-             
              if (draggedNodeIndex < targetIndex) {
-                 targetIndex -= 1;
+                 targetIndex = Math.max(0, targetIndex - 1); 
              }
              
-             // For "Drop After", logic differs.
-             // But my UI logic passes `index` of component. I'm inserting AT that position (shifting existing down).
-             // Actually, `handleDrop(e, index)` on `StepListItem` usually implies "Insert Before".
-             // But standard reorder behavior is often "Insert After" if drop on bottom half.
-             // I'll keep it simple: "Insert Before".
-             // Except for bottom "Add Step" area which is "Append".
-             
-             // Re-verify index adjustment.
-             // If nodes: [A, B, C]. Drag A (0) to B (1). Target 1.
-             // Remove A. Nodes: [B, C].
-             // S < T. Target becomes 0.
-             // Insert at 0: [A, B, C]. No change?
-             // If drag A(0) to insert BEFORE B(1).
-             // Wait, if I drag A to B, I essentially want A to stay before B.
-             // If I drag B(1) to A(0). Remove B. Nodes: [A, C]. Target 0. Insert at 0. [B, A, C]. OK.
-             
-             // If I drag A(0) to C(2). Target 2.
-             // Remove A. Nodes: [B, C].
-             // S < T (0 < 2). Target becomes 1.
-             // Insert at 1. [B, A, C].
-             // It works. A moved after B, before C.
-             
-             // What if I append (index = length)?
-             // Drag A(0) to Append (3).
-             // Remove A. Nodes: [B, C].
-             // S < T (0 < 3). Target becomes 2.
-             // Insert at 2. [B, C, A]. Works.
-             
-             // Logic: if draggedNodeIndex < targetIndex, decrement targetIndex.
-             // But wait, there is an edge case: `targetIndex` is NOT adjusted for the removal yet.
-             // Splicing relies on the array state AFTER removal.
-             // So if I drag 0 to 2.
-             // list.splice(0, 1).
-             // list is now shorter.
-             // old index 2 is now index 1.
-             
-             if (draggedNodeIndex < targetIndex) {
-                targetIndex = Math.max(0, targetIndex - 1); // Logic seems to hold but ensure non-negative
-             }
-             
-             // But if I drop ON ITSELF (drag 0, drop on 0).
-             // S=0, T=0. No change.
-             // Splicing handle it?
-             // splice(0, 1). insert at 0. [A, B, C]. OK.
-
              newNodes.splice(targetIndex, 0, moved);
              return newNodes;
          });
@@ -163,7 +111,7 @@ export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProp
       if (selectedNodeId === nodeId) setSelectedNodeId(null);
   };
 
-  const handleSave = useCallback(async () => {
+  const saveWorkflowState = useCallback(async () => {
     // Generate sequential edges
     const generatedEdges: WorkflowEdge[] = [];
     for (let i = 0; i < nodes.length - 1; i++) {
@@ -186,13 +134,58 @@ export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProp
     };
     try {
       await useDataStore.getState().updateWorkflow(initialWorkflow.id, updatedWorkflow);
-      toast.success('Workflow saved successfully');
       onSave(updatedWorkflow);
+      return updatedWorkflow;
     } catch (error) {
       console.error('Failed to save workflow:', error);
-      toast.error('Failed to save workflow');
+      throw error;
     }
   }, [nodes, inputs, initialWorkflow, name, description, onSave]);
+
+  const handleSave = async () => {
+      try {
+          await saveWorkflowState();
+          toast.success('Workflow saved successfully');
+      } catch (e) {
+          toast.error('Failed to save workflow');
+      }
+  };
+
+  const handleRun = async () => {
+      try {
+        await saveWorkflowState();
+        
+        const { workspaces, createRun } = useDataStore.getState();
+        if (workspaces.length === 0) {
+            toast.error('No workspaces found. Create one first.');
+            return;
+        }
+
+        const runId = uuidv4();
+        // Use first workspace as default
+        const workspaceId = workspaces[0].id;
+
+        const newRun: any = { // Use any to bypass strict type check on import if needed, but type matches
+            id: runId,
+            workflowId: initialWorkflow.id,
+            workspaceId,
+            status: 'running',
+            steps: {},
+            variables: {},
+            userLogs: [],
+            inputValues: {}, 
+            startTime: Date.now(),
+            description: `Manual run of ${name}`
+        };
+        
+        createRun(newRun);
+        toast.success('Run started');
+        router.push(`/workspaces/${workspaceId}`);
+      } catch (e) {
+          toast.error('Failed to start run');
+          console.error(e);
+      }
+  };
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) as WorkflowNode || null;
 
@@ -223,9 +216,15 @@ export function WorkflowBuilder({ initialWorkflow, onSave }: WorkflowBuilderProp
             </button>
             <button 
                 onClick={handleSave}
-                className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 transition-colors"
+                className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-3 py-1.5 rounded text-sm hover:bg-slate-50 transition-colors"
             >
                 <Save size={16} /> Save
+            </button>
+            <button 
+                onClick={handleRun}
+                className="flex items-center gap-2 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 transition-colors"
+            >
+                <Play size={16} /> Run
             </button>
           </div>
        </div>

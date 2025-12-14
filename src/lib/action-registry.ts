@@ -9,7 +9,8 @@ import {
     NewTempFolderDefinition, 
     ForEachListDefinition,
     AskChatGPTDefinition,
-    SplitStringDefinition
+    SplitStringDefinition,
+    AskGeminiDefinition
 } from './actions/definitions';
 
 export const ACTION_REGISTRY: ActionDefinition[] = [
@@ -22,7 +23,8 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
     NewTempFolderDefinition,
     ForEachListDefinition,
     AskChatGPTDefinition,
-    SplitStringDefinition
+    SplitStringDefinition,
+    AskGeminiDefinition
 ];
 
 export const getActionDefinition = (id: string): ActionDefinition | undefined => {

@@ -10,6 +10,7 @@ import { NewTempFolderAction } from './actions/NewTempFolderAction';
 import { ForEachListAction } from './actions/ForEachListAction';
 import { AskChatGPTAction } from './actions/AskChatGPTAction';
 import { SplitStringAction } from './actions/SplitStringAction';
+import { AskGeminiAction } from './actions/AskGeminiAction';
 
 const actionInstances: WorkflowAction[] = [
   new GitCheckoutAction(),
@@ -22,6 +23,7 @@ const actionInstances: WorkflowAction[] = [
   new ForEachListAction(),
   new AskChatGPTAction(),
   new SplitStringAction(),
+  new AskGeminiAction(),
 ];
 
 export const ACTION_INSTANCES: Record<string, WorkflowAction> = actionInstances.reduce((acc, action) => {

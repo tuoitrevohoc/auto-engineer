@@ -139,3 +139,17 @@ export const SplitStringDefinition: ActionDefinition = {
       { name: 'strings', type: 'json' },
     ],
 };
+
+export const AskGeminiDefinition: ActionDefinition = {
+    id: 'ask-gemini',
+    name: 'Ask Gemini',
+    description: 'Send a prompt to Google Gemini and get a response',
+    parameters: [
+      { name: 'prompt', label: 'Prompt', type: 'text', required: true, description: 'The prompt to send' },
+      { name: 'model', label: 'Model', type: 'string', defaultValue: 'gemini-2.5-flash' },
+    ],
+    inputs: [],
+    outputs: [
+      { name: 'response', type: 'string' },
+    ],
+};

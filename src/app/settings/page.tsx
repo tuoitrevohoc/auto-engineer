@@ -5,15 +5,18 @@ import { toast } from 'sonner';
 
 export default function SettingsPage() {
     const [apiKey, setApiKey] = useState('');
+    const [googleKey, setGoogleKey] = useState('');
     const [concurrentRuns, setConcurrentRuns] = useState('5');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         Promise.all([
             getSetting('openai_api_key'),
+            getSetting('google_api_key'),
             getSetting('max_concurrent_runs')
-        ]).then(([key, concurrent]) => {
+        ]).then(([key, gKey, concurrent]) => {
             if (key) setApiKey(key);
+            if (gKey) setGoogleKey(gKey);
             if (concurrent) setConcurrentRuns(concurrent);
             setLoading(false);
         });
@@ -21,6 +24,7 @@ export default function SettingsPage() {
 
     const handleSave = async () => {
         await saveSetting('openai_api_key', apiKey);
+        await saveSetting('google_api_key', googleKey);
         await saveSetting('max_concurrent_runs', concurrentRuns);
         toast.success('Settings saved');
     };
@@ -48,14 +52,29 @@ export default function SettingsPage() {
 
             <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                 <h2 className="text-lg font-semibold mb-4 text-slate-800">API Keys</h2>
-                <label className="block text-sm font-medium text-slate-700 mb-2">OpenAI API Key</label>
-                <input 
-                    type="password" 
-                    value={apiKey} 
-                    onChange={e => setApiKey(e.target.value)}
-                    className="w-full p-2 border border-slate-300 rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none" 
-                    placeholder="sk-..."
-                />
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">OpenAI API Key</label>
+                    <input 
+                        type="password" 
+                        value={apiKey} 
+                        onChange={e => setApiKey(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                        placeholder="sk-..."
+                    />
+                </div>
+
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Google API Key (Gemini)</label>
+                    <input 
+                        type="password" 
+                        value={googleKey} 
+                        onChange={e => setGoogleKey(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                        placeholder="AIzr..."
+                    />
+                </div>
+
                 <button 
                     onClick={handleSave} 
                     className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 transition-colors"
