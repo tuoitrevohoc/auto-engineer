@@ -9,44 +9,68 @@ export class RunCommandAction implements WorkflowAction {
   async execute(inputs: Record<string, unknown>, context: ExecutionContext): Promise<ExecutionResult> {
     const logs: string[] = [`Executing action: ${this.definition.id}`];
     
-    const command = String(inputs.command);
-    const args = inputs.args ? String(inputs.args) : '';
-    const fullCommand = `${command} ${args}`.trim();
     const cwd = inputs.workingDir ? String(inputs.workingDir) : context.workspace.workingDirectory;
 
-    logs.push(`Running: ${fullCommand}`);
+    // Parse command/args without invoking a shell.
+    // This avoids command injection via shell metacharacters and fixes quoting behavior.
+    const rawCommand = String(inputs.command ?? '').trim();
+    if (!rawCommand) {
+      return { status: 'failed', error: 'Missing required input: command', logs };
+    }
+
+    const commandParts = parseCommandLine(rawCommand);
+    const command = commandParts.shift();
+    if (!command) {
+      return { status: 'failed', error: 'Invalid command', logs };
+    }
+
+    const argsFromCommand = commandParts; // supports users putting "cmd --flag" in the command field
+    const argsFromArgs =
+      Array.isArray(inputs.args) ? inputs.args.map(v => String(v)) :
+      typeof inputs.args === 'string' ? parseCommandLine(inputs.args) :
+      inputs.args == null ? [] :
+      parseCommandLine(String(inputs.args));
+
+    const finalArgs = [...argsFromCommand, ...argsFromArgs];
+
+    logs.push(`Running: ${command}${finalArgs.length ? ' ' + finalArgs.join(' ') : ''}`);
     logs.push(`CWD: ${cwd}`);
 
     return new Promise((resolve) => {
         const { spawn } = require('child_process');
-        const child = spawn(fullCommand, { 
-            cwd, 
-            shell: true,
-            stdio: ['pipe', 'pipe', 'pipe'] // Explicitly pipe stdio to control it
+
+        // Explicitly do NOT use a shell; pass args as an array.
+        const child = spawn(command, finalArgs, {
+            cwd,
+            shell: false,
+            stdio: ['ignore', 'pipe', 'pipe'],
         });
 
-        // Close stdin immediately as requested
-        child.stdin.end();
-
+        const MAX_OUTPUT_CHARS = 1_000_000; // prevent unbounded memory growth
         let stdoutData = '';
         let stderrData = '';
+        let stdoutTruncated = false;
+        let stderrTruncated = false;
+        let settled = false;
 
         child.stdout.on('data', (data: Buffer) => {
             const chunk = data.toString();
-            stdoutData += chunk;
-            // Optional: Real-time logging if needed, but we gather it for the result
-            // logs.push(chunk); 
+            ({ text: stdoutData, truncated: stdoutTruncated } = appendAndTruncate(stdoutData, chunk, MAX_OUTPUT_CHARS, stdoutTruncated));
         });
 
         child.stderr.on('data', (data: Buffer) => {
             const chunk = data.toString();
-            stderrData += chunk;
+            ({ text: stderrData, truncated: stderrTruncated } = appendAndTruncate(stderrData, chunk, MAX_OUTPUT_CHARS, stderrTruncated));
         });
 
         // 10 minutes timeout
         const timeout = setTimeout(() => {
-            child.kill();
+            // Try graceful shutdown, then force kill.
+            child.kill('SIGTERM');
+            setTimeout(() => child.kill('SIGKILL'), 10_000).unref?.();
             logs.push('Command timed out after 10 minutes');
+            if (settled) return;
+            settled = true;
             resolve({
                 status: 'failed',
                 outputs: { stdout: stdoutData, stderr: stderrData, exitCode: -1 },
@@ -57,9 +81,14 @@ export class RunCommandAction implements WorkflowAction {
 
         child.on('close', (code: number) => {
             clearTimeout(timeout);
+            if (settled) return;
+            settled = true;
             
             const sout = stdoutData.trim();
             const serr = stderrData.trim();
+
+            if (stdoutTruncated) logs.push(`STDOUT truncated to last ${MAX_OUTPUT_CHARS} characters`);
+            if (stderrTruncated) logs.push(`STDERR truncated to last ${MAX_OUTPUT_CHARS} characters`);
 
             if (sout) logs.push(`STDOUT:\n${sout}`);
             if (serr) logs.push(`STDERR:\n${serr}`);
@@ -83,6 +112,8 @@ export class RunCommandAction implements WorkflowAction {
 
         child.on('error', (err: Error) => {
             clearTimeout(timeout);
+            if (settled) return;
+            settled = true;
             logs.push(`Spawn error: ${err.message}`);
             resolve({
                 status: 'failed',
@@ -93,4 +124,62 @@ export class RunCommandAction implements WorkflowAction {
         });
     });
   }
+}
+
+function parseCommandLine(input: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let escape = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (escape) {
+      current += ch;
+      escape = false;
+      continue;
+    }
+
+    if (quote === '"') {
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { quote = null; continue; }
+      current += ch;
+      continue;
+    }
+
+    if (quote === "'") {
+      if (ch === "'") { quote = null; continue; }
+      current += ch;
+      continue;
+    }
+
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; continue; }
+
+    if (/\s/.test(ch)) {
+      if (current.length) {
+        out.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (escape) current += '\\';
+  if (current.length) out.push(current);
+
+  return out;
+}
+
+function appendAndTruncate(existing: string, chunk: string, maxChars: number, alreadyTruncated: boolean): { text: string; truncated: boolean } {
+  let text = existing + chunk;
+  let truncated = alreadyTruncated;
+  if (text.length > maxChars) {
+    truncated = true;
+    text = text.slice(text.length - maxChars);
+  }
+  return { text, truncated };
 }
