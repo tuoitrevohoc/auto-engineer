@@ -60,7 +60,9 @@ export async function processRun(runId: string) {
         return;
     }
 
-    if (!isRunning && !isPaused && run.status === 'running') {
+    // NOTE: use the latest run state (afterRun). The previous code checked the *stale*
+    // initial `run.status`, which could prevent completion after resuming from paused.
+    if (!isRunning && !isPaused) {
         const allSuccess = workflow.nodes.every(n => afterRun.steps[n.id]?.status === 'success' || afterRun.steps[n.id]?.status === 'skipped');
         if (allSuccess) {
             updateRunStatus(runId, 'completed');
